@@ -1,8 +1,9 @@
 package main
 
 import(
- // "github.com/coreos/go-etcd/etcd"
+  "github.com/coreos/go-etcd/etcd"
    "github.com/stretchr/objx" 
+  //"strconv"
   "fmt"  
 )
 
@@ -23,19 +24,19 @@ func GenerateCoinbaseCurrencyMap(){
       fmt.Println(err)
     }   
     
-    //machines := []string{}
-    //client := etcd.NewClient(machines)     
+    machines := []string{}
+    client := etcd.NewClient(machines)     
       
     k := m.Get("data").Data()    
     for symid, symdata := range k.([]interface{}) {      
       f := symdata.([]interface{})          
-      path := fmt.Sprintf("/mkt/cnbase/map/%s", f[1])    
-      fmt.Printf("%s/id/%d\n",path, symid) 
-      fmt.Printf("%s/name/%s\n",path, f[0])
+      path := fmt.Sprintf("/mkt/cnbase/map/%s", f[1])          
+      //fmt.Printf("%s/name/%s\n",path, f[0])      
       
-      //client.Set(fmt.Sprintf("%s/id",path), symid) 
-      //client.Set(fmt.Sprintf("%s/name",path), symname) 
-    
+      fmt.Print(client.Get(path, false, false))
+      fmt.Print(symid)      
+      //client.Set(fmt.Sprintf("%s/id",path), strconv.Itoa(symid), 0) 
+      //client.Set(fmt.Sprintf("%s/name",path), f[0], 0)     
     }    
   }    
 } 
