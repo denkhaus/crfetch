@@ -1,67 +1,16 @@
 
 package main
 
-import(
-  "github.com/stretchr/objx"
-  "net/http"
-  "io/ioutil"
-  "fmt"
+import( 
   "time"
 )
-
-const(
-  CRYPTSY_API_URL = "http://pubapi.cryptsy.com/api.php?method=marketdatav2"
-)
-
-
-func fetchData() ([]byte, error){
-  resp, err := http.Get(CRYPTSY_API_URL)
-  
-  if err != nil{
-    return nil, err
-  }
-  
-  defer resp.Body.Close()
-  return ioutil.ReadAll(resp.Body) 
-}
-
-func loadData(){
-
-  ts := time.Now().Unix()
-  data, err := fetchData()
-  
-  if err != nil {
-    fmt.Println(err)
-  }
-
-  m, err := objx.FromJSON(string(data))
-  
-  if err != nil {
-    fmt.Println(err)
-  }
-    
-  if suc := m.Get("success").Float64(); suc == 1 {  
-      ret := m.Get("return.markets").MSI()     
-    
-      for _, symdata := range ret {
-        sd := objx.New(symdata)
-        
-        path := fmt.Sprintf("/mkt/cryptsy/quotes/%d/%s", ts, sd.Get("marketid").Str())
-        price := sd.Get("lasttradeprice").Str()
-        volume :=sd.Get("volume").Str()
-        
-        fmt.Printf("%s/v/%s\n", path, volume)
-        fmt.Printf("%s/p/%s\n", path, price)      
-                   
-      }    
-  }
-}
 
 
 
 func main(){
   for{
-    loadData()
+    GenerateCoinbaseCurrencyMap()
+    //loadCryptsyData()
     time.Sleep(time.Minute)
   }
 }
