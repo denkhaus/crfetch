@@ -21,7 +21,7 @@ func (p *CoinbaseProvider) Init(etcdClient *etcd.Client) error {
 	p.coinbaseClient = &coinbase.Client{APIKey: ""}
   p.etcdClient = etcdClient    
   
-	return p.maintainCurrencyMap()
+	return nil
 }
 
 func (p *CoinbaseProvider) CollectData() error {
@@ -44,19 +44,19 @@ func (p *CoinbaseProvider) CollectData() error {
 		    return err
 	    }   
       
-      path := fmt.Sprintf("/mkt/%s/quotes/%d/%s", COINBASE_PATH_ID, ts, marketid)			
-			p.etcdClient.Set(fmt.Printf("%s/p", path), price)			
+      path := fmt.Sprintf("/mkt/%s/quotes/%d/%s/p", COINBASE_PATH_ID, ts, marketid)			
+			p.etcdClient.Set(path, price)			
     }
   }
   
 	return nil
 }
 
-func (p *CoinbaseProvider) extractSymbolCodes(symbol string) []string{
+func (p *CoinbaseProvider) getValidSymbolCode(symbol string) string{
   
   if symbol != nil && len(symbol) > 0{
-      symbol = strings.ToUpper()         
-      return strings.Replace(symbol, "_TO_")      
+      symbol = strings.ToUpper(symbol)         
+      return strings.Replace(symbol, "_TO_","-")      
   }
   
   return nil
@@ -64,14 +64,39 @@ func (p *CoinbaseProvider) extractSymbolCodes(symbol string) []string{
 
 func (p *CoinbaseProvider) getMarketIdBySymbol(symbol string) (string, error){
   
-  codes = p.extractSymbolCodes(symbol)
+  code = p.extractSymbolCodes(symbol)
   
-  if codes != nil && len(codes) != 2 {
-    applog.Errorf("could not extract symbol codes:: symbol %s", symbol)
+  if code != nil && len(code) != 0 {
+    return nil, fmt.Errorf("could not extract symbol code:: symbol %s", symbol)
   }  
+  
+  basePath := fmt.Sprintf("/mkt/%s/map", COINBASE_PATH_ID)
+  keyPath := fmt.Sprintf("%s/%s",basePath, code)
+  value, err := p.etcdClient.GetValue(keyPath)
+  
+  if err != nil {
+     return nil, err 
+  }
+  
+  if value != nil{
+     return value, nil 
+  }
+  
+  count, err := p.etcdClient.KeyCount(basePath)
+  
+  if err != nil {
+     return nil, err 
+  }
+  
+  value = strconv.Itoa(count)
+  _, err := p.etcdClient.Set(keyPath, value, 0)
+  
+  if err != nil {
+		return nil, err
+	}
+  
+  return value, nil  
 }
-
-
 
 func (p *CoinbaseProvider) maintainCurrencyMap() error {
 
@@ -91,6 +116,7 @@ func (p *CoinbaseProvider) maintainCurrencyMap() error {
 			//etcdClient.Get(path, false, false)
 
 			p.etcdClient.Set(fmt.Sprintf("%s/id", path), strconv.Itoa(symid), 0)
+      
 			p.etcdClient.Set(fmt.Sprintf("%s/name", path), symdata[0], 0)
 		}
 	}
