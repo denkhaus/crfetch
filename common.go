@@ -3,7 +3,7 @@ package main
 import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"fmt"
-	"github.com/coreos/go-etcd/etcd"
+	"github.com/denkhaus/go-etcd/etcd"
 	"io/ioutil"
 	"net/http"
 )

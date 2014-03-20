@@ -2,7 +2,7 @@ package main
 
 import (
 	"bitbucket.org/mendsley/tcgl/applog"
-	"github.com/coreos/go-etcd/etcd"
+	"github.com/denkhaus/go-etcd/etcd"
 	"os"
 	"os/signal"
 	"time"

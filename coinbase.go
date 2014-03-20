@@ -4,7 +4,8 @@ import (
 	"bitbucket.org/mendsley/tcgl/applog"
   "github.com/grantmd/go-coinbase"
 	"fmt"
-	"github.com/coreos/go-etcd/etcd"	
+	"github.com/denkhaus/go-etcd/etcd"	
+  "time"
 	"strconv"
   "strings"
 )
@@ -21,21 +22,22 @@ func (p *CoinbaseProvider) Init(etcdClient *etcd.Client) error {
 	p.coinbaseClient = &coinbase.Client{APIKey: ""}
   p.etcdClient = etcdClient    
   
-	return nil
+	return p.maintainCurrencyNamesMap()
 }
 
 func (p *CoinbaseProvider) CollectData() error {
-
+  applog.Infof("coinbase provider: collect data")
+  
   data, err := p.coinbaseClient.CurrenciesExchangeRates()
   
   if err != nil {
 		return err
 	}
   
-  rates := data.(map[string]string)
+  rates := coinbase.Rates(data)
   if rates != nil && len(rates) != 0 {
 		
-    ts := time.Now.Unix()
+    ts := time.Now().Unix()
 		for symbol, price := range rates {			
       
       marketid, err  := p.getMarketIdBySymbol(symbol)
@@ -45,7 +47,12 @@ func (p *CoinbaseProvider) CollectData() error {
 	    }   
       
       path := fmt.Sprintf("/mkt/%s/quotes/%d/%s/p", COINBASE_PATH_ID, ts, marketid)			
-			p.etcdClient.Set(path, price)			
+      _, err := p.etcdClient.Set(path, price, 0)		
+      
+      if err != nil {
+		    return err
+	    }   
+      
     }
   }
   
@@ -54,53 +61,53 @@ func (p *CoinbaseProvider) CollectData() error {
 
 func (p *CoinbaseProvider) getValidSymbolCode(symbol string) string{
   
-  if symbol != nil && len(symbol) > 0{
+  if len(symbol) > 0{
       symbol = strings.ToUpper(symbol)         
-      return strings.Replace(symbol, "_TO_","-")      
+      return strings.Replace(symbol, "_TO_","-", -1)      
   }
   
-  return nil
+  return ""
 }
 
 func (p *CoinbaseProvider) getMarketIdBySymbol(symbol string) (string, error){
   
-  code = p.extractSymbolCodes(symbol)
+  code := p.getValidSymbolCode(symbol)
   
-  if code != nil && len(code) != 0 {
-    return nil, fmt.Errorf("could not extract symbol code:: symbol %s", symbol)
+  if len(code) == 0 {
+    return "", fmt.Errorf("could not extract symbol code:: symbol %s", symbol)
   }  
   
   basePath := fmt.Sprintf("/mkt/%s/map", COINBASE_PATH_ID)
-  keyPath := fmt.Sprintf("%s/%s",basePath, code)
+  keyPath := fmt.Sprintf("%s/%s/id",basePath, code)
   value, err := p.etcdClient.GetValue(keyPath)
   
   if err != nil {
-     return nil, err 
+     return "", err 
   }
   
-  if value != nil{
+  if len(value) > 0 {
      return value, nil 
   }
   
   count, err := p.etcdClient.KeyCount(basePath)
   
   if err != nil {
-     return nil, err 
+     return "", err 
   }
   
   value = strconv.Itoa(count)
-  _, err := p.etcdClient.Set(keyPath, value, 0)
+  _, err = p.etcdClient.Set(keyPath, value, 0)
   
   if err != nil {
-		return nil, err
+		return "", err
 	}
   
   return value, nil  
 }
 
-func (p *CoinbaseProvider) maintainCurrencyMap() error {
+func (p *CoinbaseProvider) maintainCurrencyNamesMap() error {
 
-  applog.Debugf("initialize coinbase provider")
+  applog.Infof("coinbase: maintain currency names map")
   data, err := p.coinbaseClient.Currencies()
 	
 	if err != nil {
@@ -110,14 +117,13 @@ func (p *CoinbaseProvider) maintainCurrencyMap() error {
   currencies := data.([][]string)
 	if currencies != nil && len(currencies) != 0 {
 		
-		for symid, symdata := range currencies {			
-			path := fmt.Sprintf("/mkt/cnbase/map/%s", symdata[1])
-
-			//etcdClient.Get(path, false, false)
-
-			p.etcdClient.Set(fmt.Sprintf("%s/id", path), strconv.Itoa(symid), 0)
+		for _, symdata := range currencies {			
+			path := fmt.Sprintf("/mkt/%s/map/symnames/%s", COINBASE_PATH_ID, symdata[1])						
+      _, err := p.etcdClient.Set(fmt.Sprintf("%s/name", path), symdata[0], 0)
       
-			p.etcdClient.Set(fmt.Sprintf("%s/name", path), symdata[0], 0)
+      if err != nil{
+        return err  
+      }
 		}
 	}
 
