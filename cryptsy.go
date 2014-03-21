@@ -2,23 +2,42 @@ package main
 
 import (
 	"fmt"
+	"bitbucket.org/mendsley/tcgl/applog"
 	"github.com/stretchr/objx"
 	"time"
 )
 
-func loadCryptsyData() {
+type CryptsyProvider struct {
+	etcdClient *etcd.Client
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// Init
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+func (p *CryptsyProvider) Init(etcdClient *etcd.Client) error {
+	applog.Infof("initialize cryptsy provider")
+
+	p.etcdClient = etcdClient
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// Collect Data
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+func (p *CoinbaseProvider) CollectData() error {
+	applog.Infof("cryptsy provider: collect data")
 
 	ts := time.Now().Unix()
 	data, err := FetchData(CRYPTSY_API_URL)
 
 	if err != nil {
-		fmt.Println(err)
+		return error
 	}
 
 	m, err := objx.FromJSON(string(data))
 
 	if err != nil {
-		fmt.Println(err)
+		return err
 	}
 
 	if suc := m.Get("success").Float64(); suc == 1 {
@@ -31,9 +50,32 @@ func loadCryptsyData() {
 			price := sd.Get("lasttradeprice").Str()
 			volume := sd.Get("volume").Str()
 
-			fmt.Printf("%s/v/%s\n", path, volume)
-			fmt.Printf("%s/p/%s\n", path, price)
+			_, err = p.etcdClient.Set(fmt.Sprintf("%s/v", path), volume, 0)
 
+			if err != nil {
+				return err
+			}
+			_, err = p.etcdClient.Set(fmt.Sprintf("%s/p", path), price, 0)
+
+			if err != nil {
+				return err
+			}
 		}
 	}
+	
+	return nil
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// create new coinbase provider.
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+func newCryptsyProvider() Provider {
+	return &CryptsyProvider{}
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// init
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+func init() {
+	RegisterProvider("cryptsy", newCryptsyProvider())
 }
