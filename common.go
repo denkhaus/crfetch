@@ -58,10 +58,10 @@ func FetchData(url string) ([]byte, error) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Init Providers
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (app *Application) InitProviders() []error {
+func (app *Application) InitProviders() (errors []error) {
 	applog.Infof("init dataproviders")
 
-	errors := make([]error, 0)
+	errors = make([]error, 0)
 	for name, prov := range providers {
 
 		err := prov.Init(app.etcdClient)
@@ -72,16 +72,16 @@ func (app *Application) InitProviders() []error {
 		}
 	}
 
-	return errors
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Collect Data
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (app *Application) CollectData() []error {
+func (app *Application) CollectData() (errors []error) {
 	applog.Infof("collect data")
 
-	errors := make([]error, 0)
+	errors = make([]error, 0)
 	for name, prov := range providers {
 
 		err := prov.CollectData()
@@ -92,5 +92,5 @@ func (app *Application) CollectData() []error {
 		}
 	}
 
-	return errors
+	return
 }

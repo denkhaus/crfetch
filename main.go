@@ -40,9 +40,9 @@ func (app *Application) RegisterInterupts() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Init Application
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (app *Application) Init() []error {
+func (app *Application) Init()(errors []error) {
 
-	errors := make([]error, 0)
+	errors = make([]error, 0)
 
 	app.quit = make(chan bool, 1)
 	app.ticker = time.NewTicker(2 * time.Minute)
@@ -52,7 +52,7 @@ func (app *Application) Init() []error {
 	app.etcdClient = etcd.NewClient(machines)
 
 	errors = append(errors, app.InitProviders()...)
-	return errors
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -60,7 +60,7 @@ func (p *CoinbaseProvider) CollectData() error {
 		}
 	}
 
-	return nil
+	return err
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -132,7 +132,7 @@ func (p *CoinbaseProvider) maintainCurrencyNamesMap() error {
 
 		for _, symdata := range currencies {
 			path := fmt.Sprintf("/mkt/%s/map/symbols/%s", COINBASE_PATH_ID, symdata[1])
-			_, err := p.etcdClient.Set(fmt.Sprintf("%s/name", path), symdata[0], 0)
+			_, err = p.etcdClient.Set(fmt.Sprintf("%s/name", path), symdata[0], 0)
 
 			if err != nil {
 				return err
@@ -140,7 +140,7 @@ func (p *CoinbaseProvider) maintainCurrencyNamesMap() error {
 		}
 	}
 
-	return nil
+	return err
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -3,68 +3,63 @@ package main
 import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"fmt"
+	"strconv"
 	"github.com/denkhaus/go-etcd/etcd"
-	"github.com/stretchr/objx"
+	"github.com/Narsil/bitstamp-go"
 	"time"
 )
 
-type CryptsyProvider struct {
+type BitstampProvider struct {
 	etcdClient *etcd.Client
+	bitstampClient *bitstamp.Api
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Init
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *CryptsyProvider) Init(etcdClient *etcd.Client) error {
-	applog.Infof("initialize cryptsy provider")
-
+func (p *BitstampProvider) Init(etcdClient *etcd.Client) (err error) {
+	applog.Infof("initialize bitstamp provider")
+    
+    p.bitstampClient, err = bitstamp.New("", "")
 	p.etcdClient = etcdClient
-	return nil
+	return
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Collect Data
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *CryptsyProvider) CollectData() (err error) {
-	applog.Infof("cryptsy provider: collect data")
+func (p *BitstampProvider) CollectData() (err error) {
+	applog.Infof("bitstamp provider: collect data")
 
 	ts := time.Now().Unix()
-	data, err := FetchData(CRYPTSY_API_URL)
+	data, err := p.bitstampClient.GetTicker()
 
 	if err != nil {
 		return
 	}
 
-	m, err := objx.FromJSON(string(data))
+	path := fmt.Sprintf("/mkt/%s/quotes/%d/%s",
+		BITSTAMP_PATH_ID, ts, BITSTAMP_MKT_ID_BTCUSD)
+
+    value := strconv.FormatFloat(data.Bid, 'g', 1, 64)
+	_, err = p.etcdClient.Set(fmt.Sprintf("%s/bid", path), value, 0)
 
 	if err != nil {
 		return
 	}
 
-	if suc := m.Get("success").Float64(); suc == 1 {
-		ret := m.Get("return.markets").MSI()
+    value = strconv.FormatFloat(data.Ask, 'g', 1, 64)
+	_, err = p.etcdClient.Set(fmt.Sprintf("%s/ask", path), value, 0)
 
-		for _, symdata := range ret {
-			sd := objx.New(symdata)
+	if err != nil {
+		return
+	}
 
-			path := fmt.Sprintf("/mkt/%s/quotes/%d/%s",
-				CRYPTSY_PATH_ID, ts, sd.Get("marketid").Str())
+    value = strconv.FormatFloat(data.Last, 'g', 1, 64)
+	_, err = p.etcdClient.Set(fmt.Sprintf("%s/last", path), value, 0)
 
-			price := sd.Get("lasttradeprice").Str()
-			volume := sd.Get("volume").Str()
-
-			_, err = p.etcdClient.Set(fmt.Sprintf("%s/v", path), volume, 0)
-
-			if err != nil {
-				return
-			}
-
-			_, err = p.etcdClient.Set(fmt.Sprintf("%s/p", path), price, 0)
-
-			if err != nil {
-				return
-			}
-		}
+	if err != nil {
+		return
 	}
 
 	return
@@ -73,13 +68,13 @@ func (p *CryptsyProvider) CollectData() (err error) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // create new coinbase provider.
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func newCryptsyProvider() Provider {
-	return &CryptsyProvider{}
+func newBitstampProvider() Provider {
+	return &BitstampProvider{}
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // init
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func init() {
-	RegisterProvider("cryptsy", newCryptsyProvider())
+	RegisterProvider("bitstamp", newBitstampProvider())
 }
