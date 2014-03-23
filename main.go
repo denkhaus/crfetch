@@ -27,8 +27,10 @@ func (app *Application) Stop() {
 func (app *Application) RegisterInterupts() {
 	// Buffered chan of one is enough
 	c := make(chan os.Signal, 1)
+	
 	// Notify about interrupts for now
 	signal.Notify(c, os.Interrupt)
+	
 	go func() {
 		for sig := range c {
 			applog.Infof("Shutting down (%v) ... \n", sig)
