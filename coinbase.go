@@ -33,7 +33,7 @@ func (p *CoinbaseProvider) Init(etcdClient *etcd.Client) error {
 func (p *CoinbaseProvider) CollectData() error {
 	applog.Infof("coinbase provider: collect data")
 
-	rates, err := p.coinbaseClient.CurrenciesExchangeRates()
+	rates, err := p.coinbaseClient.GetExchangeRates()
 
 	if err != nil {
 		return err
@@ -120,7 +120,7 @@ func (p *CoinbaseProvider) getMarketIdBySymbol(symbol string) (string, error) {
 func (p *CoinbaseProvider) maintainCurrencyNamesMap() error {
 
 	applog.Infof("coinbase: maintain currency names map")
-	curr, err := p.coinbaseClient.Currencies()
+	curr, err := p.coinbaseClient.GetCurrencies()
 
 	if err != nil {
 		return err
