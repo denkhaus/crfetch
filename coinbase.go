@@ -4,7 +4,7 @@ import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"fmt"
 	"github.com/denkhaus/go-etcd/etcd"
-	"github.com/grantmd/go-coinbase"
+	"github.com/denkhaus/go-coinbase"
 	"strconv"
 	"strings"
 	"time"
@@ -33,13 +33,12 @@ func (p *CoinbaseProvider) Init(etcdClient *etcd.Client) error {
 func (p *CoinbaseProvider) CollectData() error {
 	applog.Infof("coinbase provider: collect data")
 
-	data, err := p.coinbaseClient.CurrenciesExchangeRates()
+	rates, err := p.coinbaseClient.CurrenciesExchangeRates()
 
 	if err != nil {
 		return err
 	}
 
-	rates := data.(coinbase.Rates)
 	if rates != nil && len(rates) != 0 {
 
 		ts := time.Now().Unix()
@@ -121,16 +120,15 @@ func (p *CoinbaseProvider) getMarketIdBySymbol(symbol string) (string, error) {
 func (p *CoinbaseProvider) maintainCurrencyNamesMap() error {
 
 	applog.Infof("coinbase: maintain currency names map")
-	data, err := p.coinbaseClient.Currencies()
+	curr, err := p.coinbaseClient.Currencies()
 
 	if err != nil {
 		return err
 	}
+	
+	if curr != nil && len(curr) != 0 {
 
-	currencies := data.([][]string)
-	if currencies != nil && len(currencies) != 0 {
-
-		for _, symdata := range currencies {
+		for _, symdata := range curr {
 			path := fmt.Sprintf("/mkt/%s/map/symbols/%s", COINBASE_PATH_ID, symdata[1])
 			_, err = p.etcdClient.Set(fmt.Sprintf("%s/name", path), symdata[0], 0)
 
