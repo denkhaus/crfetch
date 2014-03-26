@@ -3,8 +3,8 @@ package main
 import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"fmt"
-	"github.com/denkhaus/go-etcd/etcd"
 	"github.com/denkhaus/go-coinbase"
+	"github.com/denkhaus/go-etcd/etcd"
 	"strconv"
 	"strings"
 	"time"
@@ -88,25 +88,16 @@ func (p *CoinbaseProvider) GetMarketIdBySymbol(symbol string) (string, error) {
 
 	basePath := fmt.Sprintf("/mkt/%s/map/pairs/", COINBASE_PATH_ID)
 	keyPath := fmt.Sprintf("%s/%s/id", basePath, code)
-	
-	value, err := p.etcdClient.GetValue(keyPath)
 
-	if err != nil {
-		return "", err
-	}
-
-	if len(value) > 0 {
+	var value string
+	if res, _ := p.etcdClient.TryGetValue(keyPath, &value); len(value) > 0 && res {
 		return value, nil
 	}
 
-	count, err := p.etcdClient.KeyCount(basePath)
-
-	if err != nil {
-		return "", err
-	}
+	count, _ := p.etcdClient.DirectoryCount(basePath)
 
 	value = strconv.Itoa(count)
-	_, err = p.etcdClient.Set(keyPath, value, 0)
+	_, err := p.etcdClient.Set(keyPath, value, 0)
 
 	if err != nil {
 		return "", err
@@ -126,7 +117,7 @@ func (p *CoinbaseProvider) maintainCurrencyNamesMap() error {
 	if err != nil {
 		return err
 	}
-	
+
 	if curr != nil && len(curr) != 0 {
 
 		for _, symdata := range curr {

@@ -27,10 +27,10 @@ func (app *Application) Stop() {
 func (app *Application) RegisterInterupts() {
 	// Buffered chan of one is enough
 	c := make(chan os.Signal, 1)
-	
+
 	// Notify about interrupts for now
 	signal.Notify(c, os.Interrupt)
-	
+
 	go func() {
 		for sig := range c {
 			applog.Infof("Shutting down (%v) ... \n", sig)
@@ -42,7 +42,7 @@ func (app *Application) RegisterInterupts() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Init Application
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (app *Application) Init()(errors []error) {
+func (app *Application) Init() (errors []error) {
 
 	errors = make([]error, 0)
 
@@ -53,7 +53,9 @@ func (app *Application) Init()(errors []error) {
 	machines := []string{}
 	app.etcdClient = etcd.NewClient(machines)
 
-	errors = append(errors, app.InitProviders()...)
+	initErrors := app.InitProviders()
+	errors = append(errors, initErrors...)
+
 	return
 }
 
