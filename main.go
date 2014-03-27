@@ -45,7 +45,7 @@ func (app *Application) RegisterInterupts() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (app *Application) Init() (errors []error) {
 
-	snapSteps := []uint{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800 }
+	snapSteps := []uint{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800}
 	errors = make([]error, 0)
 
 	app.quit = make(chan bool, 1)
@@ -58,7 +58,6 @@ func (app *Application) Init() (errors []error) {
 
 	initErrors := app.InitProviders()
 	errors = append(errors, initErrors...)
-
 	return
 }
 
@@ -67,11 +66,19 @@ func (app *Application) Init() (errors []error) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (app *Application) Run() {
 
+	nRuns := 0
+
 	for {
 		select {
 		case <-app.ticker.C:
+			nRuns++
 			if errors := app.CollectData(); len(errors) > 0 {
-				ReportErrors("collect error", errors)
+				ReportErrors("collect data error", errors)
+			}
+			if nRuns%10 == 0 {
+				if errors := app.Normalize(); len(errors) > 0 {
+					ReportErrors("normalize error", errors)
+				}
 			}
 		case <-app.quit:
 			app.ticker.Stop()
