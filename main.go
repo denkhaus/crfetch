@@ -12,6 +12,7 @@ type Application struct {
 	ticker     *time.Ticker
 	quit       chan bool
 	etcdClient *etcd.Client
+	normalizer *Normalizer
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -44,6 +45,7 @@ func (app *Application) RegisterInterupts() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (app *Application) Init() (errors []error) {
 
+	snapSteps := []uint{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800 }
 	errors = make([]error, 0)
 
 	app.quit = make(chan bool, 1)
@@ -52,6 +54,7 @@ func (app *Application) Init() (errors []error) {
 
 	machines := []string{}
 	app.etcdClient = etcd.NewClient(machines)
+	app.normalizer = NewNormalizer(app.etcdClient, snapSteps)
 
 	initErrors := app.InitProviders()
 	errors = append(errors, initErrors...)
