@@ -1,6 +1,5 @@
 package main
 
-
 import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"encoding/json"
@@ -11,36 +10,36 @@ import (
 )
 
 type BarData struct {
-	o float64
-	h float64
-	l float64
-	c float64
-	v float64
-	t int
+	O float64 `json:"o"`
+	H float64 `json:"h"`
+	L float64 `json:"l"`
+	C float64 `json:"c"`
+	V float64 `json:"v"`
+	T int     `json:"t"`
 }
 
 type BarInfo struct {
-	data  BarData
-	tsMin int
-	tsMax int
+	Data  BarData `json:"data"`
+	TsMin int     `json:"tsMin"`
+	TsMax int     `json:"tsMax"`
 }
 
 type Normalizer struct {
 	etcdClient *etcd.Client
-	snapSteps  []uint
+	snapSteps  []int
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (b *BarData) Initialize(price float64, volume float64, timestamp int) {
-	b.o = price
-	b.h = price
-	b.l = price
-	b.c = price
-	b.v = volume
-	b.t = timestamp
+func (b *BarData) Init(price float64, volume float64, timestamp int) {
+	b.O = price
+	b.H = price
+	b.L = price
+	b.C = price
+	b.V = volume
+	b.T = timestamp
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -50,7 +49,21 @@ func (n *Normalizer) normalize(ts int, snap int) int {
 	return ts - (ts % snap)
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// RemoveQuoteData
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+func (n *Normalizer) RemoveQuoteData(prov Provider, ts int) error {
 
+	tsPath := prov.FormatTimestampPath(ts)
+	_, err := n.etcdClient.Delete(tsPath, true)
+
+	if err != nil {
+		return fmt.Errorf("unable to remove dataPath %s :: error:: %s",
+			tsPath, err.Error())
+	}
+
+	return nil
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // PersistBarInfo
@@ -81,8 +94,8 @@ func (n *Normalizer) PersistBarInfo(key string, info *BarInfo) error {
 func (n *Normalizer) CreateNewBar(key string, price float64, volume float64, quoteTs int, barTs int) error {
 
 	barData := BarData{}
-	barData.Initialize(price, volume, barTs)
-	barInfo := BarInfo{data: barData, tsMax: quoteTs, tsMin: quoteTs}
+	barData.Init(price, volume, barTs)
+	barInfo := BarInfo{Data: barData, TsMax: quoteTs, TsMin: quoteTs}
 
 	return n.PersistBarInfo(key, &barInfo)
 }
@@ -90,11 +103,10 @@ func (n *Normalizer) CreateNewBar(key string, price float64, volume float64, quo
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // BuildBar
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (n *Normalizer) BuildPriceBar(tsPath string, price float64, volume float64, symbolId int, snap int, quoteTs int) error {
+func (n *Normalizer) BuildPriceBar(prov Provider, price float64, volume float64, symbolId int, snap int, quoteTs int) error {
 
-	providerPath := path.Dir(tsPath)
 	barTs := n.normalize(quoteTs, snap)
-	barKey := fmt.Sprintf("%s/bars/%n/%n/%n", providerPath, symbolId, snap, barTs)
+	barKey := prov.FormatBarKey(symbolId, snap, barTs)
 
 	var barInfoString string
 	if succ, _ := n.etcdClient.TryGetValue(barKey, &barInfoString); succ {
@@ -107,22 +119,22 @@ func (n *Normalizer) BuildPriceBar(tsPath string, price float64, volume float64,
 				barInfoString, err.Error())
 		}
 
-		if quoteTs < barInfo.tsMin {
-			barInfo.tsMin = quoteTs
-			barInfo.data.o = price
+		if quoteTs < barInfo.TsMin {
+			barInfo.TsMin = quoteTs
+			barInfo.Data.O = price
 		}
 
-		if quoteTs > barInfo.tsMax {
-			barInfo.tsMax = quoteTs
-			barInfo.data.c = price
+		if quoteTs > barInfo.TsMax {
+			barInfo.TsMax = quoteTs
+			barInfo.Data.C = price
 		}
 
-		if price > barInfo.data.h {
-			barInfo.data.h = price
+		if price > barInfo.Data.H {
+			barInfo.Data.H = price
 		}
 
-		if price < barInfo.data.l {
-			barInfo.data.l = price
+		if price < barInfo.Data.L {
+			barInfo.Data.L = price
 		}
 
 		return n.PersistBarInfo(barKey, &barInfo)
@@ -135,92 +147,79 @@ func (n *Normalizer) BuildPriceBar(tsPath string, price float64, volume float64,
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // NormalizeSymbols
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (n *Normalizer) NormalizeSymbols(path string, snap int, ts int) error {
+func (n *Normalizer) NormalizeSymbols(prov Provider, snap int, ts int) error {
 
-	applog.Debugf("normalizing all data for timestamp %n by snap %n", ts, snap)
-	nCount, err := n.etcdClient.EnumerateDirs(path, func(dir string) error {
-		symbolId, err := strconv.Atoi(dir)
+	tsPath := prov.FormatTimestampPath(ts)
+	nCount, err := n.etcdClient.EnumerateDirs(tsPath, func(dir string) error {
+		dirName := path.Base(dir)
+		symbolId, err := strconv.Atoi(dirName)
 
 		if err != nil {
 			return fmt.Errorf("dir %s is not convertible to symbolId:: error:: %s",
-				dir, err.Error())
+				dirName, err.Error())
 		}
 
-		priceKey := fmt.Sprintf("%s/%n/p", path, symbolId)
-		volumeKey := fmt.Sprintf("%s/%n/v", path, symbolId)
-
-		priceString, err := n.etcdClient.GetValue(priceKey)
+		price, err := prov.GetPrice(ts, symbolId)
 
 		if err != nil {
-			return fmt.Errorf("price key %s is not available:: error:: %s",
-				priceKey, err.Error())
+			return err
 		}
 
-		var volume float64
-		if volumeString, _ := n.etcdClient.GetValue(volumeKey); len(volumeString) > 0 {
-			volume, err = strconv.ParseFloat(volumeString, 64)
-
-			if err != nil {
-				return fmt.Errorf("unable to parse volume data %s to float64:: error:: %s",
-					volumeString, err.Error())
-			}
-		} else {
-			volume = 0.0
-		}
-
-		price, err := strconv.ParseFloat(priceString, 64)
+		volume, err := prov.GetVolume(ts, symbolId)
 
 		if err != nil {
-			return fmt.Errorf("unable to parse price data %s to float64:: error:: %s",
-				priceString, err.Error())
+			return err
 		}
 
-		return n.BuildPriceBar(path, price, volume, symbolId, snap, ts)
+		return n.BuildPriceBar(prov, price, volume, symbolId, snap, ts)
 	})
 
-	applog.Infof("%n symbols processed", nCount)
+	applog.Infof("%d symbols processed", nCount)
 	return err
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Do Work
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (n *Normalizer) DoWork(provider string) error {
-	applog.Infof("start normalizing %s data", provider)
+func (n *Normalizer) Normalize(prov Provider) error {
+	applog.Infof("start normalizing %s data", prov.Name())
 
-	basePath := fmt.Sprintf("/mkt/%s/quotes", provider)
-	nCount, err := n.etcdClient.EnumerateDirs(basePath, func(dir string) error {
-		ts, err := strconv.Atoi(dir)
+	quotesPath := prov.GetQuotesPath()
+	nCount, err := n.etcdClient.EnumerateDirs(quotesPath, func(dir string) error {
+		dirName := path.Base(dir)
+		ts, err := strconv.Atoi(dirName)
 
 		if err != nil {
 			return fmt.Errorf("dir %s is not convertible to unix timestamp:: error:: %s",
-				dir, err.Error())
+				dirName, err.Error())
 		}
 
-		for snap := range n.snapSteps {
+		applog.Infof("provider %s: normalizing all data for timestamp %d", prov.Name(), ts)
 
-			actPath := fmt.Sprintf("%s/%n", basePath, ts)
-			err = n.NormalizeSymbols(actPath, snap, ts)
+		for _, snap := range n.snapSteps {
+			err = n.NormalizeSymbols(prov, snap, ts)
 
 			if err != nil {
 				return err
 			}
 		}
+		applog.Infof("provider %s: normalizing successfull, removing source quotes for timestamp %d", prov.Name(), ts)
+		err = n.RemoveQuoteData(prov, ts)
+
+		if err != nil {
+			return err
+		}
 
 		return nil
 	})
 
-	if err != nil {
-		return err
-	}
-
-	applog.Infof("%n timestamps processed", nCount)
-	return nil
+	applog.Infof("%d timestamps processed", nCount)
+	return err
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // NewNormalizer
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func NewNormalizer(client *etcd.Client, snapSteps []uint)(* Normalizer) {
-	return &Normalizer{etcdClient : client, snapSteps: snapSteps}
+func NewNormalizer(client *etcd.Client, snapSteps []int) *Normalizer {
+	return &Normalizer{etcdClient: client, snapSteps: snapSteps}
 }
