@@ -125,6 +125,7 @@ func (n *Normalizer) BuildPriceBar(prov Provider, price float64, volume float64,
 		}
 
 		if quoteTs > barInfo.TsMax {
+
 			barInfo.Data.C = price
 			barInfo.Data.V = volume
 			barInfo.TsMax = quoteTs
@@ -151,6 +152,7 @@ func (n *Normalizer) BuildPriceBar(prov Provider, price float64, volume float64,
 func (n *Normalizer) NormalizeSymbols(prov Provider, snap int, ts int) error {
 
 	tsPath := prov.FormatTimestampPath(ts)
+
 	_, err := n.etcdClient.EnumerateDirs(tsPath, func(dir string) error {
 		dirName := path.Base(dir)
 		symbolId, err := strconv.Atoi(dirName)
@@ -203,6 +205,7 @@ func (n *Normalizer) Normalize(prov Provider) error {
 				return err
 			}
 		}
+
 		applog.Infof("%s: normalizing successfull, removing ts %d quotes", prov.Name(), ts)
 		err = n.RemoveQuoteData(prov, ts)
 
