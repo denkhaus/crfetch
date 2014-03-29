@@ -10,8 +10,15 @@ import (
 )
 
 type BitstampProvider struct {
-	etcdClient     *etcd.Client
+	ProviderBase
 	bitstampClient *bitstamp.Api
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// FormatPriceKey
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+func (p *BitstampProvider) FormatPriceKey(ts int, symbolId int) string {
+	return fmt.Sprintf("%s/%d/bid", p.FormatTimestampPath(ts), symbolId)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -39,7 +46,7 @@ func (p *BitstampProvider) CollectData() (err error) {
 	}
 
 	path := fmt.Sprintf("/mkt/%s/quotes/%d/%s",
-		BITSTAMP_PATH_ID, ts, BITSTAMP_MKT_ID_BTCUSD)
+		p.pathId, ts, BITSTAMP_MKT_ID_BTCUSD)
 
 	value := strconv.FormatFloat(data.Bid, 'g', 1, 64)
 	_, err = p.etcdClient.Set(fmt.Sprintf("%s/bid", path), value, 0)
@@ -66,15 +73,12 @@ func (p *BitstampProvider) CollectData() (err error) {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-// create new coinbase provider.
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func newBitstampProvider() Provider {
-	return &BitstampProvider{}
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
 // init
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func init() {
-	RegisterProvider("bitstamp", newBitstampProvider())
+	provider := &BitstampProvider{}
+	provider.name = "bitstamp"
+	provider.pathId = BITSTAMP_PATH_ID
+	provider.self = provider
+	RegisterProvider(provider.Name(), provider)
 }

@@ -11,7 +11,7 @@ import (
 )
 
 type CoinbaseProvider struct {
-	etcdClient     *etcd.Client
+	ProviderBase
 	coinbaseClient *coinbase.Client
 }
 
@@ -50,7 +50,7 @@ func (p *CoinbaseProvider) CollectData() error {
 				return err
 			}
 
-			path := fmt.Sprintf("/mkt/%s/quotes/%d/%s/p", COINBASE_PATH_ID, ts, marketid)
+			path := fmt.Sprintf("/mkt/%s/quotes/%d/%s/p", p.pathId, ts, marketid)
 			_, err = p.etcdClient.Set(path, price, 0)
 
 			if err != nil {
@@ -86,7 +86,7 @@ func (p *CoinbaseProvider) GetMarketIdBySymbol(symbol string) (string, error) {
 		return "", fmt.Errorf("could not extract symbol code:: symbol %s", symbol)
 	}
 
-	basePath := fmt.Sprintf("/mkt/%s/map/pairs/", COINBASE_PATH_ID)
+	basePath := fmt.Sprintf("/mkt/%s/map/pairs/", p.pathId)
 	keyPath := fmt.Sprintf("%s/%s/id", basePath, code)
 
 	var value string
@@ -115,34 +115,32 @@ func (p *CoinbaseProvider) maintainCurrencyNamesMap() error {
 	curr, err := p.coinbaseClient.GetCurrencies()
 
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to get currencies error:: %s",
+			err.Error())
 	}
 
 	if curr != nil && len(curr) != 0 {
 
 		for _, symdata := range curr {
-			path := fmt.Sprintf("/mkt/%s/map/symbols/%s", COINBASE_PATH_ID, symdata[1])
+			path := fmt.Sprintf("/mkt/%s/map/symbols/%s", p.pathId, symdata[1])
 			_, err = p.etcdClient.Set(fmt.Sprintf("%s/name", path), symdata[0], 0)
 
 			if err != nil {
-				return err
+				return fmt.Errorf("etcd error:: %s", err.Error())
 			}
 		}
 	}
 
-	return err
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// create new coinbase provider.
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func newCoinbaseProvider() Provider {
-	return &CoinbaseProvider{}
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // init
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func init() {
-	RegisterProvider("coinbase", newCoinbaseProvider())
+	provider := &CoinbaseProvider{}
+	provider.name = "coinbase"
+	provider.pathId = COINBASE_PATH_ID
+	provider.self = provider
+	RegisterProvider(provider.Name(), provider)
 }

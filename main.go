@@ -34,7 +34,7 @@ func (app *Application) RegisterInterupts() {
 
 	go func() {
 		for sig := range c {
-			applog.Infof("Shutting down (%v) ... \n", sig)
+			applog.Infof("application shutdown requested by %v\n", sig)
 			app.Stop()
 		}
 	}()
@@ -43,10 +43,10 @@ func (app *Application) RegisterInterupts() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Init Application
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (app *Application) Init() (errors []error) {
+func (app *Application) Init() []error {
 
-	snapSteps := []uint{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800}
-	errors = make([]error, 0)
+	snapSteps := []int{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800}
+	errors := make([]error, 0)
 
 	app.quit = make(chan bool, 1)
 	app.ticker = time.NewTicker(2 * time.Minute)
@@ -57,8 +57,7 @@ func (app *Application) Init() (errors []error) {
 	app.normalizer = NewNormalizer(app.etcdClient, snapSteps)
 
 	initErrors := app.InitProviders()
-	errors = append(errors, initErrors...)
-	return
+	return append(errors, initErrors...)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -72,15 +71,20 @@ func (app *Application) Run() {
 		select {
 		case <-app.ticker.C:
 			nRuns++
+			LogSection("pass %d", nRuns)
+
 			if errors := app.CollectData(); len(errors) > 0 {
 				ReportErrors("collect data error", errors)
 			}
-			if nRuns%10 == 0 {
+
+			if nRuns%5 == 0 {
+				LogSection("start normalizing data")
 				if errors := app.Normalize(); len(errors) > 0 {
 					ReportErrors("normalize error", errors)
 				}
 			}
 		case <-app.quit:
+			LogSection("end application")
 			app.ticker.Stop()
 			return
 		}
@@ -93,6 +97,7 @@ func (app *Application) Run() {
 func main() {
 
 	app := &Application{}
+	LogSection("startup application")
 	if errors := app.Init(); len(errors) > 0 {
 		ReportErrors("init error", errors)
 	} else {
