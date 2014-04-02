@@ -2,11 +2,15 @@ package main
 
 import (
 	"bitbucket.org/mendsley/tcgl/applog"
+	"fmt"
 	"github.com/denkhaus/go-etcd/etcd"
+	"github.com/denkhaus/yamlconfig"
 	"os"
 	"os/signal"
 	"time"
 )
+
+var Configuration = &yamlconfig.Config{}
 
 type Application struct {
 	ticker     *time.Ticker
@@ -40,24 +44,39 @@ func (app *Application) RegisterInterupts() {
 	}()
 }
 
+func (app *Application) LoadDefaults(config *Config) {
+	config.SetDefault("snapsteps", []int{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800})
+	config.SetDefault("fetchactionwaitminutes", 2)
+	config.SetDefault("erasesourcequoteswaitminutes", 15)
+	config.SetDefault("etcd:machines", []string{})
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Init Application
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (app *Application) Init() []error {
 
-	snapSteps := []int{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800}
 	errors := make([]error, 0)
 
-	app.quit = make(chan bool, 1)
-	app.ticker = time.NewTicker(2 * time.Minute)
-	app.RegisterInterupts()
+	if err := Configuration.Load(app.LoadDefaults, "", false); err != nil {
+		return append(errors, fmt.Errorf("load config error:: %s", err.Error()))
+	}
 
-	machines := []string{}
+	app.quit = make(chan bool, 1)
+
+	waitMinutes := Configuration.GetInt("fetchactionwaitminutes")
+	app.ticker = time.NewTicker(waitMinutes * time.Minute)
+
+	machines := config.GetStringList("etcd:machines")
 	app.etcdClient = etcd.NewClient(machines)
+
+	snapSteps := Configuration.GetIntList("snapsteps")
 	app.normalizer = NewNormalizer(app.etcdClient, snapSteps)
 
-	initErrors := app.InitProviders()
-	return append(errors, initErrors...)
+	errors = append(errors, app.InitProviders()...)
+	app.RegisterInterupts()
+
+	return errors
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
