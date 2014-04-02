@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-var Configuration = &yamlconfig.Config{}
+var config = yamlconfig.NewConfig("crfetchrc.yaml")
 
 type Application struct {
 	ticker     *time.Ticker
@@ -44,9 +44,10 @@ func (app *Application) RegisterInterupts() {
 	}()
 }
 
-func (app *Application) LoadDefaults(config *Config) {
+func (app *Application) LoadDefaults(config *yamlconfig.Config) {
 	config.SetDefault("snapsteps", []int{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800})
-	config.SetDefault("fetchactionwaitminutes", 2)
+	config.SetDefault("fetchactionwaitminutes", 2*time.Minute)
+	config.SetDefault("normalizeactionat", 5)
 	config.SetDefault("erasesourcequoteswaitminutes", 15)
 	config.SetDefault("etcd:machines", []string{})
 }
@@ -58,19 +59,19 @@ func (app *Application) Init() []error {
 
 	errors := make([]error, 0)
 
-	if err := Configuration.Load(app.LoadDefaults, "", false); err != nil {
+	if err := config.Load(app.LoadDefaults, "", false); err != nil {
 		return append(errors, fmt.Errorf("load config error:: %s", err.Error()))
 	}
 
 	app.quit = make(chan bool, 1)
 
-	waitMinutes := Configuration.GetInt("fetchactionwaitminutes")
-	app.ticker = time.NewTicker(waitMinutes * time.Minute)
+	waitMinutes := config.GetDuration("fetchactionwaitminutes")
+	app.ticker = time.NewTicker(waitMinutes)
 
 	machines := config.GetStringList("etcd:machines")
 	app.etcdClient = etcd.NewClient(machines)
 
-	snapSteps := Configuration.GetIntList("snapsteps")
+	snapSteps := config.GetIntList("snapsteps")
 	app.normalizer = NewNormalizer(app.etcdClient, snapSteps)
 
 	errors = append(errors, app.InitProviders()...)
@@ -85,6 +86,7 @@ func (app *Application) Init() []error {
 func (app *Application) Run() {
 
 	nRuns := 0
+	normAction := config.GetInt("normalizeactionat")
 
 	for {
 		select {
@@ -96,7 +98,7 @@ func (app *Application) Run() {
 				ReportErrors("collect data error", errors)
 			}
 
-			if nRuns%5 == 0 {
+			if nRuns%normAction == 0 {
 				LogSection("start normalizing data")
 				if errors := app.Normalize(); len(errors) > 0 {
 					ReportErrors("normalize error", errors)
