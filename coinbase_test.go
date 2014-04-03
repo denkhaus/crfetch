@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/denkhaus/go-etcd/etcd"
+	"github.com/denkhaus/go-store"
 	"testing"
 )
 

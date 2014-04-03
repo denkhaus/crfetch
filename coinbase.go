@@ -4,7 +4,8 @@ import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"fmt"
 	"github.com/denkhaus/go-coinbase"
-	"github.com/denkhaus/go-etcd/etcd"
+	"github.com/denkhaus/go-store"
+	"github.com/denkhaus/yamlconfig"
 	"strconv"
 	"strings"
 	"time"
@@ -18,11 +19,12 @@ type CoinbaseProvider struct {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Init
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *CoinbaseProvider) Init(etcdClient *etcd.Client) error {
+func (p *CoinbaseProvider) Init(config *yamlconfig.Config, store *store.Store) error {
 	applog.Infof("initialize coinbase provider")
 
 	p.coinbaseClient = &coinbase.Client{APIKey: ""}
-	p.etcdClient = etcdClient
+	p.config = config
+	p.store = store
 
 	return p.maintainCurrencyNamesMap()
 }
@@ -34,26 +36,25 @@ func (p *CoinbaseProvider) CollectData() error {
 	applog.Infof("coinbase provider: collect data")
 
 	rates, err := p.coinbaseClient.GetExchangeRates()
-
 	if err != nil {
 		return err
 	}
 
 	if rates != nil && len(rates) != 0 {
-
 		ts := time.Now().Unix()
 		for symbol, price := range rates {
-
 			marketid, err := p.GetMarketIdBySymbol(symbol)
-
 			if err != nil {
 				return err
 			}
 
-			path := fmt.Sprintf("/mkt/%s/quotes/%d/%s/p", p.pathId, ts, marketid)
-			_, err = p.etcdClient.Set(path, price, 0)
-
+			pr, err := strconv.ParseFloat(price, 64)
 			if err != nil {
+				return err
+			}
+
+			setName := fmt.Sprintf("/mkt/%s/q/%s/p", p.pathId, marketid)
+			if _, err = p.store.SortedSetSet(setName, float64(ts), pr); err != nil {
 				return err
 			}
 		}
@@ -140,7 +141,7 @@ func (p *CoinbaseProvider) maintainCurrencyNamesMap() error {
 func init() {
 	provider := &CoinbaseProvider{}
 	provider.name = "coinbase"
-	provider.pathId = COINBASE_PATH_ID
+	provider.pathId = "cnbase"
 	provider.self = provider
 	RegisterProvider(provider.Name(), provider)
 }

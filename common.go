@@ -4,18 +4,19 @@ import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"bytes"
 	"fmt"
-	"github.com/denkhaus/go-etcd/etcd"
+	"github.com/denkhaus/go-store"
+	"github.com/denkhaus/yamlconfig"
 	"io/ioutil"
 	"net/http"
 )
 
 type Provider interface {
-	Init(client *etcd.Client) error
+	Init(config *yamlconfig.Config, store *store.Store) error
 	CollectData() error
 	GetQuotesPath() string
-	FormatPriceKey(ts int, symbolId int) string
-	FormatVolumeKey(ts int, symbolId int) string
-	FormatTimestampPath(ts int) string
+	FormatPriceKey(symbolId int) string
+	FormatVolumeKey(symbolId int) string
+	FormatSymbolIdPath(symbolId int) string
 	FormatBarKey(symbolId int, snap int, barTs int) string
 	Name() string
 	GetPrice(ts int, symbolId int) (float64, error)
@@ -87,10 +88,7 @@ func (app *Application) InitProviders() (errors []error) {
 
 	errors = make([]error, 0)
 	for name, prov := range providers {
-
-		err := prov.Init(app.etcdClient)
-
-		if err != nil {
+		if err := prov.Init(app.config, app.store); err != nil {
 			errors = append(errors,
 				fmt.Errorf("provider %s :: %s", name, err.Error()))
 		}

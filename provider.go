@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/denkhaus/go-etcd/etcd"
-	"strconv"
+	"github.com/denkhaus/go-store"
+	"github.com/denkhaus/yamlconfig"
 )
 
 type ProviderBase struct {
-	etcdClient *etcd.Client
-	self       Provider
-	name       string
-	pathId     string
+	store  *store.Store
+	config *yamlconfig.Config
+	self   Provider
+	name   string
+	pathId string
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -24,36 +25,36 @@ func (p *ProviderBase) Name() string {
 // FormatBarKey
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (p *ProviderBase) FormatBarKey(symbolId int, snap int, barTs int) string {
-	return fmt.Sprintf("/mkt/%s/barinfo/%d/%d/%d",
+	return fmt.Sprintf("/mkt/%s/bars/%d/%d/%d",
 		p.pathId, symbolId, snap, barTs)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // FormatPriceKey
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) FormatPriceKey(ts int, symbolId int) string {
-	return fmt.Sprintf("%s/%d/p", p.FormatTimestampPath(ts), symbolId)
+func (p *ProviderBase) FormatPriceKey(symbolId int) string {
+	return fmt.Sprintf("%s/p", p.FormatSymbolIdPath(symbolId))
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // FormatVolumeKey
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) FormatVolumeKey(ts int, symbolId int) string {
+func (p *ProviderBase) FormatVolumeKey(symbolId int) string {
 	return ""
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // FormatTimestampPath
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) FormatTimestampPath(ts int) string {
-	return fmt.Sprintf("%s/%d", p.GetQuotesPath(), ts)
+func (p *ProviderBase) FormatSymbolIdPath(symbolId int) string {
+	return fmt.Sprintf("%s/%d", p.GetQuotesPath(), symbolId)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // GetQuotesPath
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (p *ProviderBase) GetQuotesPath() string {
-	return fmt.Sprintf("/mkt/%s/quotes", p.pathId)
+	return fmt.Sprintf("/mkt/%s/q", p.pathId)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -61,19 +62,17 @@ func (p *ProviderBase) GetQuotesPath() string {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 func (p *ProviderBase) GetPrice(ts int, symbolId int) (float64, error) {
 
-	priceKey := p.self.FormatPriceKey(ts, symbolId)
-	priceString, err := p.etcdClient.GetValue(priceKey)
+	setName := p.self.FormatPriceKey(symbolId)
+	price, err := p.store.SortedSetGet(setName, float64(ts))
 
 	if err != nil {
-		return 0.0, fmt.Errorf("price key %s is not available:: error:: %s",
-			priceKey, err.Error())
+		return 0.0, fmt.Errorf("get price error at set name %s and ts %d :: error:: %s",
+		setName, ts, err.Error())
 	}
 
-	price, err := strconv.ParseFloat(priceString, 64)
-
-	if err != nil {
-		return 0.0, fmt.Errorf("unable to parse price data %s to float64:: error:: %s",
-			priceString, err.Error())
+	if price == nil && err == nil {
+		return 0.0, fmt.Warnf("get price at set name %s and ts %d :: price entry not available",
+		setName, ts)
 	}
 
 	return price, err
@@ -84,20 +83,16 @@ func (p *ProviderBase) GetPrice(ts int, symbolId int) (float64, error) {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 func (p *ProviderBase) GetVolume(ts int, symbolId int) (float64, error) {
 
-	var (
-		volume float64
-		err    error
-	)
+	setName := p.self.FormatVolumeKey(symbolId)
+	volume, err := p.store.SortedSetGet(setName, float64(ts))
 
-	volumeKey := p.self.FormatVolumeKey(ts, symbolId)
-	if volumeString, _ := p.etcdClient.GetValue(volumeKey); len(volumeString) > 0 {
-		volume, err = strconv.ParseFloat(volumeString, 64)
+	if err != nil {
+		return 0.0, fmt.Errorf("get volume error at set name %s and ts %d :: error:: %s",
+		setName, ts, err.Error())
+	}
 
-		if err != nil {
-			return 0.0, fmt.Errorf("unable to parse volume data %s to float64:: error:: %s",
-				volumeString, err.Error())
-		}
-	} else {
+    // throw no error here since volume is not mandatory
+	if price == nil && err == nil {
 		return 0.0, nil
 	}
 

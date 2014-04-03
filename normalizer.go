@@ -4,7 +4,7 @@ import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"encoding/json"
 	"fmt"
-	"github.com/denkhaus/go-etcd/etcd"
+	"github.com/denkhaus/go-store"
 	"path"
 	"strconv"
 )
@@ -25,14 +25,13 @@ type BarInfo struct {
 }
 
 type Normalizer struct {
-	etcdClient *etcd.Client
-	snapSteps  []int
+	store     *store.Store
+	snapSteps []int
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 func (b *BarData) Init(price float64, volume float64, timestamp int) {
 	b.O = price
 	b.H = price
@@ -52,15 +51,22 @@ func (n *Normalizer) normalize(ts int, snap int) int {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // RemoveQuoteData
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (n *Normalizer) RemoveQuoteData(prov Provider, ts int) error {
+func (n *Normalizer) RemoveQuoteData(prov Provider, symbolId, ts int) error {
 
-	tsPath := prov.FormatTimestampPath(ts)
-	_, err := n.etcdClient.Delete(tsPath, true)
-
-	if err != nil {
-		return fmt.Errorf("unable to remove dataPath %s :: error:: %s",
-			tsPath, err.Error())
+    score := float64(ts)
+	priceSetName := prov.FormatPriceKey(symbolId)
+	if _, err := n.store.SortedSetDeleteByScore(priceSetName, score, score); err != nil {
+		return fmt.Errorf("unable to remove price info from %s, ts %d :: error:: %s",
+			priceSetName, ts, err.Error())
 	}
+
+    volumeSetName := prov.FormatVolumeKey(symbolId)
+    if len(volumeSetName) > 0 {
+        if _, err := n.store.SortedSetDeleteByScore(volumeSetName, score, score); err != nil {
+		    return fmt.Errorf("unable to remove volume info from %s, ts %d :: error:: %s",
+			    volumeSetName, ts, err.Error())
+	    }   
+    }
 
 	return nil
 }
@@ -199,9 +205,7 @@ func (n *Normalizer) Normalize(prov Provider) error {
 		applog.Infof("%s: normalizing ts %d quotes", prov.Name(), ts)
 
 		for _, snap := range n.snapSteps {
-			err = n.NormalizeSymbols(prov, snap, ts)
-
-			if err != nil {
+			if err = n.NormalizeSymbols(prov, snap, ts); err != nil {
 				return err
 			}
 		}
@@ -223,6 +227,6 @@ func (n *Normalizer) Normalize(prov Provider) error {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // NewNormalizer
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func NewNormalizer(client *etcd.Client, snapSteps []int) *Normalizer {
-	return &Normalizer{etcdClient: client, snapSteps: snapSteps}
+func NewNormalizer(store *store.Store, snapSteps []int) *Normalizer {
+	return &Normalizer{store: store, snapSteps: snapSteps}
 }

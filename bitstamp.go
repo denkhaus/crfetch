@@ -4,8 +4,8 @@ import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"fmt"
 	"github.com/Narsil/bitstamp-go"
-	"github.com/denkhaus/go-etcd/etcd"
-	"strconv"
+	"github.com/denkhaus/go-store"
+	"github.com/denkhaus/yamlconfig"
 	"time"
 )
 
@@ -17,18 +17,18 @@ type BitstampProvider struct {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // FormatPriceKey
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *BitstampProvider) FormatPriceKey(ts int, symbolId int) string {
-	return fmt.Sprintf("%s/%d/bid", p.FormatTimestampPath(ts), symbolId)
+func (p *BitstampProvider) FormatPriceKey(symbolId int) string {
+	return fmt.Sprintf("%s/bid", p.FormatSymbolIdPath(symbolId))
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Init
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *BitstampProvider) Init(etcdClient *etcd.Client) (err error) {
+func (p *BitstampProvider) Init(config *yamlconfig.Config, store *store.Store) (err error) {
 	applog.Infof("initialize bitstamp provider")
-
 	p.bitstampClient, err = bitstamp.New("", "")
-	p.etcdClient = etcdClient
+	p.config = config
+	p.store = store
 	return
 }
 
@@ -40,32 +40,24 @@ func (p *BitstampProvider) CollectData() (err error) {
 
 	ts := time.Now().Unix()
 	data, err := p.bitstampClient.GetTicker()
-
 	if err != nil {
 		return
 	}
 
-	path := fmt.Sprintf("/mkt/%s/quotes/%d/%s",
-		p.pathId, ts, BITSTAMP_MKT_ID_BTCUSD)
+	setName := fmt.Sprintf("/mkt/%s/q/%s", p.pathId, BITSTAMP_MKT_ID_BTCUSD)
 
-	value := strconv.FormatFloat(data.Bid, 'g', 1, 64)
-	_, err = p.etcdClient.Set(fmt.Sprintf("%s/bid", path), value, 0)
-
-	if err != nil {
+	if _, err = p.store.SortedSetSet(fmt.Sprintf("%s/bid", setName),
+		float64(ts), data.Bid); err != nil {
 		return
 	}
 
-	value = strconv.FormatFloat(data.Ask, 'g', 1, 64)
-	_, err = p.etcdClient.Set(fmt.Sprintf("%s/ask", path), value, 0)
-
-	if err != nil {
+	if _, err = p.store.SortedSetSet(fmt.Sprintf("%s/ask", setName),
+		float64(ts), data.Ask); err != nil {
 		return
 	}
 
-	value = strconv.FormatFloat(data.Last, 'g', 1, 64)
-	_, err = p.etcdClient.Set(fmt.Sprintf("%s/last", path), value, 0)
-
-	if err != nil {
+	if _, err = p.store.SortedSetSet(fmt.Sprintf("%s/last", setName),
+		float64(ts), data.Last); err != nil {
 		return
 	}
 
@@ -78,7 +70,7 @@ func (p *BitstampProvider) CollectData() (err error) {
 func init() {
 	provider := &BitstampProvider{}
 	provider.name = "bitstamp"
-	provider.pathId = BITSTAMP_PATH_ID
+	provider.pathId = "btstmp"
 	provider.self = provider
 	RegisterProvider(provider.Name(), provider)
 }

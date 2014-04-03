@@ -3,20 +3,19 @@ package main
 import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"fmt"
-	"github.com/denkhaus/go-etcd/etcd"
+	"github.com/denkhaus/go-store"
 	"github.com/denkhaus/yamlconfig"
 	"os"
 	"os/signal"
 	"time"
 )
 
-var config = yamlconfig.NewConfig("crfetchrc.yaml")
-
 type Application struct {
 	ticker     *time.Ticker
 	quit       chan bool
-	etcdClient *etcd.Client
+	store      *store.Store
 	normalizer *Normalizer
+	config     *yamlconfig.Config
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -44,12 +43,18 @@ func (app *Application) RegisterInterupts() {
 	}()
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// LoadDefaults
+///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (app *Application) LoadDefaults(config *yamlconfig.Config) {
 	config.SetDefault("snapsteps", []int{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800})
 	config.SetDefault("fetchactionwaitminutes", 2*time.Minute)
 	config.SetDefault("normalizeactionat", 5)
 	config.SetDefault("erasesourcequoteswaitminutes", 15)
-	config.SetDefault("etcd:machines", []string{})
+	config.SetDefault("store:instances", 10)
+	config.SetDefault("store:network", "tcp")
+	config.SetDefault("store:address", ":6379")
+	config.SetDefault("store:password", "")
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -58,21 +63,31 @@ func (app *Application) LoadDefaults(config *yamlconfig.Config) {
 func (app *Application) Init() []error {
 
 	errors := make([]error, 0)
-
+	config := yamlconfig.NewConfig("crfetchrc.yaml")
 	if err := config.Load(app.LoadDefaults, "", false); err != nil {
 		return append(errors, fmt.Errorf("load config error:: %s", err.Error()))
 	}
 
+	app.config = config
 	app.quit = make(chan bool, 1)
 
 	waitMinutes := config.GetDuration("fetchactionwaitminutes")
 	app.ticker = time.NewTicker(waitMinutes)
 
-	machines := config.GetStringList("etcd:machines")
-	app.etcdClient = etcd.NewClient(machines)
+	poolInstances := config.GetInt("store:instances")
+	poolNetwork := config.GetString("store:network")
+	poolAddress := config.GetString("store:address")
+	poolPassword := config.GetString("store:password")
 
+	if st, err := store.NewStore(poolInstances, poolNetwork, 
+	poolAddress, poolPassword); err != nil {
+		return append(errors, err)
+	}else{
+	    app.store = st    
+	}
+	
 	snapSteps := config.GetIntList("snapsteps")
-	app.normalizer = NewNormalizer(app.etcdClient, snapSteps)
+	app.normalizer = NewNormalizer(app.store, snapSteps)
 
 	errors = append(errors, app.InitProviders()...)
 	app.RegisterInterupts()
@@ -86,14 +101,13 @@ func (app *Application) Init() []error {
 func (app *Application) Run() {
 
 	nRuns := 0
-	normAction := config.GetInt("normalizeactionat")
+	normAction := app.config.GetInt("normalizeactionat")
 
 	for {
 		select {
 		case <-app.ticker.C:
 			nRuns++
 			LogSection("pass %d", nRuns)
-
 			if errors := app.CollectData(); len(errors) > 0 {
 				ReportErrors("collect data error", errors)
 			}
