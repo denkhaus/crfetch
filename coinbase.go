@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 )
-
+ 
 type CoinbaseProvider struct {
 	ProviderBase
 	coinbaseClient *coinbase.Client
@@ -111,23 +111,19 @@ func (p *CoinbaseProvider) GetMarketIdBySymbol(symbol string) (string, error) {
 // Maintains Currency Names Map to ISO Symbol
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (p *CoinbaseProvider) maintainCurrencyNamesMap() error {
-
 	applog.Infof("coinbase: maintain currency names map")
-	curr, err := p.coinbaseClient.GetCurrencies()
 
+	curr, err := p.coinbaseClient.GetCurrencies()
 	if err != nil {
 		return fmt.Errorf("unable to get currencies error:: %s",
 			err.Error())
 	}
 
 	if curr != nil && len(curr) != 0 {
-
+		hash := fmt.Sprintf("/mkt/%s/map/symbols", p.pathId)
 		for _, symdata := range curr {
-			path := fmt.Sprintf("/mkt/%s/map/symbols/%s", p.pathId, symdata[1])
-			_, err = p.etcdClient.Set(fmt.Sprintf("%s/name", path), symdata[0], 0)
-
-			if err != nil {
-				return fmt.Errorf("etcd error:: %s", err.Error())
+			if _, err = p.store.HashSet(hash, symdata[1], symdata[0]); err != nil {
+				return fmt.Errorf("maintain currency names map error:: %s", err.Error())
 			}
 		}
 	}
