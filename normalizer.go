@@ -2,7 +2,6 @@ package main
 
 import (
 	"bitbucket.org/mendsley/tcgl/applog"
-	"encoding/json"
 	"fmt"
 	"github.com/denkhaus/go-store"
 	"path"
@@ -53,57 +52,22 @@ func (n *Normalizer) normalize(ts int, snap int) int {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 func (n *Normalizer) RemoveQuoteData(prov Provider, symbolId, ts int) error {
 
-    score := float64(ts)
+	score := float64(ts)
 	priceSetName := prov.FormatPriceKey(symbolId)
 	if _, err := n.store.SortedSetDeleteByScore(priceSetName, score, score); err != nil {
 		return fmt.Errorf("unable to remove price info from %s, ts %d :: error:: %s",
 			priceSetName, ts, err.Error())
 	}
 
-    volumeSetName := prov.FormatVolumeKey(symbolId)
-    if len(volumeSetName) > 0 {
-        if _, err := n.store.SortedSetDeleteByScore(volumeSetName, score, score); err != nil {
-		    return fmt.Errorf("unable to remove volume info from %s, ts %d :: error:: %s",
-			    volumeSetName, ts, err.Error())
-	    }   
-    }
-
-	return nil
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// PersistBarInfo
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (n *Normalizer) PersistBarInfo(key string, info *BarInfo) error {
-
-	bi, err := json.Marshal(*info)
-
-	if err != nil {
-		return fmt.Errorf("unable to marshal new BarInfo:: error:: %s",
-			err.Error())
-	}
-
-	barInfoString := string(bi)
-	_, err = n.etcdClient.Set(key, barInfoString, 0)
-
-	if err != nil {
-		return fmt.Errorf("unable to persist BarInfo: %s:: error:: %s",
-			barInfoString, err.Error())
+	volumeSetName := prov.FormatVolumeKey(symbolId)
+	if len(volumeSetName) > 0 {
+		if _, err := n.store.SortedSetDeleteByScore(volumeSetName, score, score); err != nil {
+			return fmt.Errorf("unable to remove volume info from %s, ts %d :: error:: %s",
+				volumeSetName, ts, err.Error())
+		}
 	}
 
 	return nil
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// CreateNewBar
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (n *Normalizer) CreateNewBar(key string, price float64, volume float64, quoteTs int, barTs int) error {
-
-	barData := BarData{}
-	barData.Init(price, volume, barTs)
-	barInfo := BarInfo{Data: barData, TsMax: quoteTs, TsMin: quoteTs}
-
-	return n.PersistBarInfo(key, &barInfo)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -112,78 +76,61 @@ func (n *Normalizer) CreateNewBar(key string, price float64, volume float64, quo
 func (n *Normalizer) BuildPriceBar(prov Provider, price float64, volume float64, symbolId int, snap int, quoteTs int) error {
 
 	barTs := n.normalize(quoteTs, snap)
-	barKey := prov.FormatBarKey(symbolId, snap, barTs)
+	barHash := prov.FormatBarHash(symbolId)
+	barKey := prov.FormatBarKey(snap, barTs)
 
-	var barInfoString string
-	if succ, _ := n.etcdClient.TryGetValue(barKey, &barInfoString); succ {
-
-		barInfo := BarInfo{}
-		err := json.Unmarshal([]byte(barInfoString), &barInfo)
-
-		if err != nil {
-			return fmt.Errorf("unable to unmarshal BarInfo: %s:: error:: %s",
-				barInfoString, err.Error())
-		}
-
-		if quoteTs < barInfo.TsMin {
-			barInfo.TsMin = quoteTs
-			barInfo.Data.O = price
-		}
-
-		if quoteTs > barInfo.TsMax {
-
-			barInfo.Data.C = price
-			barInfo.Data.V = volume
-			barInfo.TsMax = quoteTs
-		}
-
-		if price > barInfo.Data.H {
-			barInfo.Data.H = price
-		}
-
-		if price < barInfo.Data.L {
-			barInfo.Data.L = price
-		}
-
-		return n.PersistBarInfo(barKey, &barInfo)
-
-	} else {
-		return n.CreateNewBar(barKey, price, volume, quoteTs, barTs)
+	res, err := n.store.HashGet(barHash, barKey)
+	if err != nil {
+		return err
 	}
+
+	if res == nil {
+		barData := BarData{}
+		barData.Init(price, volume, barTs)
+		barInfo := BarInfo{Data: barData, TsMax: quoteTs, TsMin: quoteTs}
+		return n.store.HashSet(barHash, barKey, barInfo)
+	}
+
+	var barInfo = res.(BarInfo)
+
+	if quoteTs < barInfo.TsMin {
+		barInfo.TsMin = quoteTs
+		barInfo.Data.O = price
+	}
+
+	if quoteTs > barInfo.TsMax {
+		barInfo.Data.C = price
+		barInfo.Data.V = volume
+		barInfo.TsMax = quoteTs
+	}
+
+	if price > barInfo.Data.H {
+		barInfo.Data.H = price
+	}
+
+	if price < barInfo.Data.L {
+		barInfo.Data.L = price
+	}
+
+	return n.store.HashSet(barHash, barKey, barInfo)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // NormalizeSymbols
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (n *Normalizer) NormalizeSymbols(prov Provider, snap int, ts int) error {
+func (n *Normalizer) NormalizeSymbols(prov Provider, snap int) error {
 
-	tsPath := prov.FormatTimestampPath(ts)
+	price, err := prov.GetPrice(ts, symbolId)
+	if err != nil {
+		return err
+	}
 
-	_, err := n.etcdClient.EnumerateDirs(tsPath, func(dir string) error {
-		dirName := path.Base(dir)
-		symbolId, err := strconv.Atoi(dirName)
+	volume, err := prov.GetVolume(ts, symbolId)
+	if err != nil {
+		return err
+	}
 
-		if err != nil {
-			return fmt.Errorf("dir %s is not convertible to symbolId:: error:: %s",
-				dirName, err.Error())
-		}
-
-		price, err := prov.GetPrice(ts, symbolId)
-
-		if err != nil {
-			return err
-		}
-
-		volume, err := prov.GetVolume(ts, symbolId)
-
-		if err != nil {
-			return err
-		}
-
-		return n.BuildPriceBar(prov, price, volume, symbolId, snap, ts)
-	})
-
-	return err
+	return n.BuildPriceBar(prov, price, volume, symbolId, snap, ts)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -192,36 +139,20 @@ func (n *Normalizer) NormalizeSymbols(prov Provider, snap int, ts int) error {
 func (n *Normalizer) Normalize(prov Provider) error {
 	applog.Infof("start normalizing %s data", prov.Name())
 
-	quotesPath := prov.GetQuotesPath()
-	nCount, err := n.etcdClient.EnumerateDirs(quotesPath, func(dir string) error {
-		dirName := path.Base(dir)
-		ts, err := strconv.Atoi(dirName)
-
-		if err != nil {
-			return fmt.Errorf("dir %s is not convertible to unix timestamp:: error:: %s",
-				dirName, err.Error())
-		}
-
-		applog.Infof("%s: normalizing ts %d quotes", prov.Name(), ts)
-
-		for _, snap := range n.snapSteps {
-			if err = n.NormalizeSymbols(prov, snap, ts); err != nil {
-				return err
-			}
-		}
-
-		applog.Infof("%s: normalizing successfull, removing ts %d quotes", prov.Name(), ts)
-		err = n.RemoveQuoteData(prov, ts)
-
-		if err != nil {
+	for _, snap := range n.snapSteps {
+		if err = n.NormalizeSymbols(prov, snap); err != nil {
 			return err
 		}
+	}
 
-		return nil
-	})
+	applog.Infof("%s: normalizing successfull, removing ts %d quotes", prov.Name(), ts)
 
-	applog.Infof("%d timestamps processed", nCount)
-	return err
+	err = n.RemoveQuoteData(prov)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////

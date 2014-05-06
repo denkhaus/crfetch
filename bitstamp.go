@@ -7,9 +7,9 @@ import (
 	"github.com/denkhaus/go-store"
 	"github.com/denkhaus/yamlconfig"
 	"time"
-) 
+)
 
-type BitstampProvider struct { 
+type BitstampProvider struct {
 	ProviderBase
 	bitstampClient *bitstamp.Api
 }
@@ -30,7 +30,7 @@ func (p *BitstampProvider) Init(config *yamlconfig.Config, store *store.Store) (
 	p.config = config
 	p.store = store
 	return
-} 
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Collect Data

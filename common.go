@@ -17,7 +17,8 @@ type Provider interface {
 	FormatPriceKey(symbolId int) string
 	FormatVolumeKey(symbolId int) string
 	FormatSymbolIdPath(symbolId int) string
-	FormatBarKey(symbolId int, snap int, barTs int) string
+	FormatBarKey(snap int, barTs int) string
+	FormatBarHash(symbolId int) string
 	Name() string
 	GetPrice(ts int, symbolId int) (float64, error)
 	GetVolume(ts int, symbolId int) (float64, error)

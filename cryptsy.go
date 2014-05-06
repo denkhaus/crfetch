@@ -54,25 +54,25 @@ func (p *CryptsyProvider) CollectData() error {
 		for _, symdata := range ret {
 			sd := objx.New(symdata)
 
-			setName := fmt.Sprintf("/mkt/%s/q/%s",p.pathId, sd.Get("marketid").Str())
-	        
-            vol , err := strconv.ParseFloat(sd.Get("volume").Str(),64)
-            if err != nil {
-		        return err
-	        }
-            
-			if _, err = p.store.SortedSetSet(
-			    fmt.Sprintf("%s/v", setName), float64(ts), vol); err != nil {
+			setName := fmt.Sprintf("/mkt/%s/q/%s", p.pathId, sd.Get("marketid").Str())
+
+			vol, err := strconv.ParseFloat(sd.Get("volume").Str(), 64)
+			if err != nil {
 				return err
 			}
 
-            pr , err := strconv.ParseFloat(sd.Get("lasttradeprice").Str(),64)
-            if err != nil {
-		        return err
-	        }
-	        
 			if _, err = p.store.SortedSetSet(
-			    fmt.Sprintf("%s/p", setName), float64(ts), pr); err != nil {
+				fmt.Sprintf("%s/v", setName), float64(ts), vol); err != nil {
+				return err
+			}
+
+			pr, err := strconv.ParseFloat(sd.Get("lasttradeprice").Str(), 64)
+			if err != nil {
+				return err
+			}
+
+			if _, err = p.store.SortedSetSet(
+				fmt.Sprintf("%s/p", setName), float64(ts), pr); err != nil {
 				return err
 			}
 		}

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 )
- 
+
 type CoinbaseProvider struct {
 	ProviderBase
 	coinbaseClient *coinbase.Client
@@ -22,7 +22,10 @@ type CoinbaseProvider struct {
 func (p *CoinbaseProvider) Init(config *yamlconfig.Config, store *store.Store) error {
 	applog.Infof("initialize coinbase provider")
 
-	p.coinbaseClient = &coinbase.Client{APIKey: ""}
+	p.coinbaseClient = &coinbase.Client{
+		APIKey:	config.GetString("provider:coinbase:apikey"),
+	}
+
 	p.config = config
 	p.store = store
 
@@ -43,7 +46,7 @@ func (p *CoinbaseProvider) CollectData() error {
 	if rates != nil && len(rates) != 0 {
 		ts := time.Now().Unix()
 		for symbol, price := range rates {
-			marketid, err := p.GetMarketIdBySymbol(symbol)
+			marketid, err := p.getMarketIdBySymbol(symbol)
 			if err != nil {
 				return err
 			}
@@ -60,7 +63,7 @@ func (p *CoinbaseProvider) CollectData() error {
 		}
 	}
 
-	return err
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -79,7 +82,7 @@ func (p *CoinbaseProvider) getValidSymbolCode(symbol string) string {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *CoinbaseProvider) GetMarketIdBySymbol(symbol string) (string, error) {
+func (p *CoinbaseProvider) getMarketIdBySymbol(symbol string) (string, error) {
 
 	code := p.getValidSymbolCode(symbol)
 
@@ -87,24 +90,30 @@ func (p *CoinbaseProvider) GetMarketIdBySymbol(symbol string) (string, error) {
 		return "", fmt.Errorf("could not extract symbol code:: symbol %s", symbol)
 	}
 
-	basePath := fmt.Sprintf("/mkt/%s/map/pairs/", p.pathId)
-	keyPath := fmt.Sprintf("%s/%s/id", basePath, code)
+	hash := fmt.Sprintf("/mkt/%s/map/pairs/", p.pathId)
+	key := fmt.Sprintf("%s/id", code)
 
-	var value string
-	if res, _ := p.etcdClient.TryGetValue(keyPath, &value); len(value) > 0 && res {
-		return value, nil
-	}
-
-	count, _ := p.etcdClient.DirectoryCount(basePath)
-
-	value = strconv.Itoa(count)
-	_, err := p.etcdClient.Set(keyPath, value, 0)
-
+	value, err := p.store.HashGet(hash, key)
 	if err != nil {
 		return "", err
 	}
 
-	return value, nil
+	if value != nil {
+		return value.(string), nil
+	}
+
+	count, err := p.store.HashSize(hash)
+	if err != nil {
+		return "", err
+	}
+
+	value = strconv.Itoa(count)
+	err = p.store.HashSet(hash, key, value)
+	if err != nil {
+		return "", err
+	}
+
+	return value.(string), nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -122,7 +131,7 @@ func (p *CoinbaseProvider) maintainCurrencyNamesMap() error {
 	if curr != nil && len(curr) != 0 {
 		hash := fmt.Sprintf("/mkt/%s/map/symbols", p.pathId)
 		for _, symdata := range curr {
-			if _, err = p.store.HashSet(hash, symdata[1], symdata[0]); err != nil {
+			if err = p.store.HashSet(hash, symdata[1], symdata[0]); err != nil {
 				return fmt.Errorf("maintain currency names map error:: %s", err.Error())
 			}
 		}

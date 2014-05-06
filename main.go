@@ -55,6 +55,7 @@ func (app *Application) LoadDefaults(config *yamlconfig.Config) {
 	config.SetDefault("store:network", "tcp")
 	config.SetDefault("store:address", ":6379")
 	config.SetDefault("store:password", "")
+	config.SetDefault("provider:coinbase:apikey", "")
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -79,13 +80,13 @@ func (app *Application) Init() []error {
 	poolAddress := config.GetString("store:address")
 	poolPassword := config.GetString("store:password")
 
-	if st, err := store.NewStore(poolInstances, poolNetwork, 
-	poolAddress, poolPassword); err != nil {
+	if st, err := store.NewStore(poolInstances, poolNetwork,
+		poolAddress, poolPassword); err != nil {
 		return append(errors, err)
-	}else{
-	    app.store = st    
+	} else {
+		app.store = st
 	}
-	
+
 	snapSteps := config.GetIntList("snapsteps")
 	app.normalizer = NewNormalizer(app.store, snapSteps)
 

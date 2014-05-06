@@ -22,11 +22,17 @@ func (p *ProviderBase) Name() string {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
+// FormatBarHash
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+func (p *ProviderBase) FormatBarHash(symbolId int) string {
+	return fmt.Sprintf("/mkt/%s/bars/%d", p.pathId, symbolId)
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
 // FormatBarKey
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) FormatBarKey(symbolId int, snap int, barTs int) string {
-	return fmt.Sprintf("/mkt/%s/bars/%d/%d/%d",
-		p.pathId, symbolId, snap, barTs)
+func (p *ProviderBase) FormatBarKey(snap int, barTs int) string {
+	return fmt.Sprintf("%s/%d", snap, barTs)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -67,12 +73,12 @@ func (p *ProviderBase) GetPrice(ts int, symbolId int) (float64, error) {
 
 	if err != nil {
 		return 0.0, fmt.Errorf("get price error at set name %s and ts %d :: error:: %s",
-		setName, ts, err.Error())
+			setName, ts, err.Error())
 	}
 
 	if price == nil && err == nil {
 		return 0.0, fmt.Warnf("get price at set name %s and ts %d :: price entry not available",
-		setName, ts)
+			setName, ts)
 	}
 
 	return price, err
@@ -88,10 +94,10 @@ func (p *ProviderBase) GetVolume(ts int, symbolId int) (float64, error) {
 
 	if err != nil {
 		return 0.0, fmt.Errorf("get volume error at set name %s and ts %d :: error:: %s",
-		setName, ts, err.Error())
+			setName, ts, err.Error())
 	}
 
-    // throw no error here since volume is not mandatory
+	// throw no error here since volume is not mandatory
 	if price == nil && err == nil {
 		return 0.0, nil
 	}
