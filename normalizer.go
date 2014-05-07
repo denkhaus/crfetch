@@ -48,35 +48,16 @@ func (n *Normalizer) normalize(ts int, snap int) int {
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// RemoveQuoteData
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (n *Normalizer) RemoveQuoteData(prov Provider, symbolId, ts int) error {
-
-	score := float64(ts)
-	priceSetName := prov.FormatPriceKey(symbolId)
-	if _, err := n.store.SortedSetDeleteByScore(priceSetName, score, score); err != nil {
-		return fmt.Errorf("unable to remove price info from %s, ts %d :: error:: %s",
-			priceSetName, ts, err.Error())
-	}
-
-	volumeSetName := prov.FormatVolumeKey(symbolId)
-	if len(volumeSetName) > 0 {
-		if _, err := n.store.SortedSetDeleteByScore(volumeSetName, score, score); err != nil {
-			return fmt.Errorf("unable to remove volume info from %s, ts %d :: error:: %s",
-				volumeSetName, ts, err.Error())
-		}
-	}
-
-	return nil
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // BuildBar
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (n *Normalizer) BuildPriceBar(prov Provider, price float64, volume float64, symbolId int, snap int, quoteTs int) error {
+func (n *Normalizer) BuildPriceBar(prov Provider, quote Quote, snap int) error {
+
+	quoteTs := quote.timeStamp
+	price := quote.price
+	volume := quote.volume
 
 	barTs := n.normalize(quoteTs, snap)
-	barHash := prov.FormatBarHash(symbolId)
+	barHash := prov.FormatBarHash(quote.symbolId)
 	barKey := prov.FormatBarKey(snap, barTs)
 
 	res, err := n.store.HashGet(barHash, barKey)
@@ -116,39 +97,22 @@ func (n *Normalizer) BuildPriceBar(prov Provider, price float64, volume float64,
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// NormalizeSymbols
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (n *Normalizer) NormalizeSymbols(prov Provider, snap int) error {
-
-	price, err := prov.GetPrice(ts, symbolId)
-	if err != nil {
-		return err
-	}
-
-	volume, err := prov.GetVolume(ts, symbolId)
-	if err != nil {
-		return err
-	}
-
-	return n.BuildPriceBar(prov, price, volume, symbolId, snap, ts)
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Do Work
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 func (n *Normalizer) Normalize(prov Provider) error {
 	applog.Infof("start normalizing %s data", prov.Name())
 
-	for _, snap := range n.snapSteps {
-		if err = n.NormalizeSymbols(prov, snap); err != nil {
-			return err
+	if err = prov.EnumerateQuotes(func(q Quotes) {
+		for _, snap := range n.snapSteps {
+			n.BuildPriceBar(prov, quote, snap)
 		}
+	}); err != nil {
+		return err
 	}
 
-	applog.Infof("%s: normalizing successfull, removing ts %d quotes", prov.Name(), ts)
+	applog.Infof("%s: normalizing successfull, removing quotes", prov.Name())
 
-	err = n.RemoveQuoteData(prov)
-	if err != nil {
+	if err = prov.RemoveQuotes(); err != nil {
 		return err
 	}
 

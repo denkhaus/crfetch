@@ -6,6 +6,13 @@ import (
 	"github.com/denkhaus/yamlconfig"
 )
 
+type Quote struct {
+	price     float64
+	volume    float64
+	symbolId  int
+	timeStamp int
+}
+
 type ProviderBase struct {
 	store  *store.Store
 	config *yamlconfig.Config
@@ -61,6 +68,49 @@ func (p *ProviderBase) FormatSymbolIdPath(symbolId int) string {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (p *ProviderBase) GetQuotesPath() string {
 	return fmt.Sprintf("/mkt/%s/q", p.pathId)
+}
+
+type EnumQuotesFunc func(quote Quote)
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// EnumQuotesFunc
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+func (p *ProviderBase) EnumerateQuotes(enumQuotesFunc EnumQuotesFunc) string {
+
+	match := fmt.Sprintf("/mkt/%s/q", p.pathId)
+	p.store.EnumerateAll(match, func(idx int, key string) {
+		price, err := prov.GetPrice(ts, symbolId)
+		if err != nil {
+			return err
+		}
+
+		volume, err := prov.GetVolume(ts, symbolId)
+		if err != nil {
+			return err
+		}
+	})
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// RemoveQuotes
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+func (p *Provider) RemoveQuotes() error {
+
+	priceSetName := p.FormatPriceKey(symbolId)
+	if _, err := p.store.SortedSetRemoveAll(priceSetName); err != nil {
+		return fmt.Errorf("unable to remove price info from %s:: error:: %s",
+			priceSetName, err.Error())
+	}
+
+	volumeSetName := p.FormatVolumeKey(symbolId)
+	if len(volumeSetName) > 0 {
+		if _, err := p.store.SortedSetRemoveAll(volumeSetName); err != nil {
+			return fmt.Errorf("unable to remove volume info from %s:: error:: %s",
+				volumeSetName, err.Error())
+		}
+	}
+
+	return nil
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
