@@ -2,10 +2,7 @@ package main
 
 import (
 	"bitbucket.org/mendsley/tcgl/applog"
-	"fmt"
 	"github.com/denkhaus/go-store"
-	"path"
-	"strconv"
 )
 
 type BarData struct {
@@ -102,9 +99,9 @@ func (n *Normalizer) BuildPriceBar(prov Provider, quote Quote, snap int) error {
 func (n *Normalizer) Normalize(prov Provider) error {
 	applog.Infof("start normalizing %s data", prov.Name())
 
-	if err = prov.EnumerateQuotes(func(q Quotes) {
+	if err := prov.EnumerateQuotes(func(q Quote) {
 		for _, snap := range n.snapSteps {
-			n.BuildPriceBar(prov, quote, snap)
+			n.BuildPriceBar(prov, q, snap)
 		}
 	}); err != nil {
 		return err
@@ -112,7 +109,7 @@ func (n *Normalizer) Normalize(prov Provider) error {
 
 	applog.Infof("%s: normalizing successfull, removing quotes", prov.Name())
 
-	if err = prov.RemoveQuotes(); err != nil {
+	if err := prov.RemoveQuotes(); err != nil {
 		return err
 	}
 

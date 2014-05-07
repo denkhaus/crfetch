@@ -13,15 +13,11 @@ import (
 type Provider interface {
 	Init(config *yamlconfig.Config, store *store.Store) error
 	CollectData() error
-	GetQuotesPath() string
-	FormatPriceKey(symbolId int) string
-	FormatVolumeKey(symbolId int) string
-	FormatSymbolIdPath(symbolId int) string
 	FormatBarKey(snap int, barTs int) string
 	FormatBarHash(symbolId int) string
+	EnumerateQuotes(enumQuotesFunc EnumQuotesFunc) error
+	RemoveQuotes() error
 	Name() string
-	GetPrice(ts int, symbolId int) (float64, error)
-	GetVolume(ts int, symbolId int) (float64, error)
 }
 
 var providers = make(map[string]Provider)

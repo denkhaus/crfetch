@@ -42,115 +42,65 @@ func (p *ProviderBase) FormatBarKey(snap int, barTs int) string {
 	return fmt.Sprintf("%s/%d", snap, barTs)
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// FormatPriceKey
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) FormatPriceKey(symbolId int) string {
-	return fmt.Sprintf("%s/p", p.FormatSymbolIdPath(symbolId))
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// FormatVolumeKey
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) FormatVolumeKey(symbolId int) string {
-	return ""
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// FormatTimestampPath
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) FormatSymbolIdPath(symbolId int) string {
-	return fmt.Sprintf("%s/%d", p.GetQuotesPath(), symbolId)
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetQuotesPath
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) GetQuotesPath() string {
-	return fmt.Sprintf("/mkt/%s/q", p.pathId)
-}
-
 type EnumQuotesFunc func(quote Quote)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // EnumQuotesFunc
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) EnumerateQuotes(enumQuotesFunc EnumQuotesFunc) string {
+func (p *ProviderBase) EnumerateQuotes(enumQuotesFunc EnumQuotesFunc) error {
+
+	var (
+		pathId   string
+		symbolId int
+	)
 
 	match := fmt.Sprintf("/mkt/%s/q", p.pathId)
-	p.store.EnumerateAll(match, func(idx int, key string) {
-		price, err := prov.GetPrice(ts, symbolId)
-		if err != nil {
-			return err
+	p.store.EnumerateKeys(match, func(idx int, key string) error {
+
+		c, err := fmt.Sscanf(key, "/mkt/%s/q/%d", &pathId, &symbolId)
+		if err != nil || c != 2 {
+			return fmt.Errorf("error while parsing key %s:: %s", key, err.Error())
 		}
 
-		volume, err := prov.GetVolume(ts, symbolId)
-		if err != nil {
+		res, err := p.store.SortedSetGetAll(key)
+		if err != nil{
 			return err
 		}
+		
+		if res != nil && len(res) > 0{
+			for _, data = range res{
+				quote =: Quote{symbolId: symbolId}				
+				quote.volume = data["vol"]
+				
+				if quote.timeStamp, ok := data["ts"]; !ok{
+					return fmt.Errorf("parsing quotedata of key %s. No timestamp info available.", key)
+				}
+				
+				if quote.price, ok := data["bid"]; !ok{
+					return fmt.Errorf("parsing quotedata of key %s. No price info available.", key)
+				}				
+			}
+		}
+		
+		return nil
 	})
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// RemoveQuotes
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *Provider) RemoveQuotes() error {
-
-	priceSetName := p.FormatPriceKey(symbolId)
-	if _, err := p.store.SortedSetRemoveAll(priceSetName); err != nil {
-		return fmt.Errorf("unable to remove price info from %s:: error:: %s",
-			priceSetName, err.Error())
-	}
-
-	volumeSetName := p.FormatVolumeKey(symbolId)
-	if len(volumeSetName) > 0 {
-		if _, err := p.store.SortedSetRemoveAll(volumeSetName); err != nil {
-			return fmt.Errorf("unable to remove volume info from %s:: error:: %s",
-				volumeSetName, err.Error())
-		}
-	}
 
 	return nil
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetPrice
+// RemoveQuotes
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) GetPrice(ts int, symbolId int) (float64, error) {
+func (p *ProviderBase) RemoveQuotes() error {
 
-	setName := p.self.FormatPriceKey(symbolId)
-	price, err := p.store.SortedSetGet(setName, float64(ts))
+	match := fmt.Sprintf("/mkt/%s/q", p.pathId)
+	p.store.EnumerateKeys(match, func(idx int, key string) error {
+		if _, err := p.store.SortedSetDeleteAll(key); err != nil {
+			return fmt.Errorf("unable to remove price info from %s:: error:: %s",
+				key, err.Error())
+		}
+		return nil
+	})
 
-	if err != nil {
-		return 0.0, fmt.Errorf("get price error at set name %s and ts %d :: error:: %s",
-			setName, ts, err.Error())
-	}
-
-	if price == nil && err == nil {
-		return 0.0, fmt.Warnf("get price at set name %s and ts %d :: price entry not available",
-			setName, ts)
-	}
-
-	return price, err
-}
-
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetVolume
-/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *ProviderBase) GetVolume(ts int, symbolId int) (float64, error) {
-
-	setName := p.self.FormatVolumeKey(symbolId)
-	volume, err := p.store.SortedSetGet(setName, float64(ts))
-
-	if err != nil {
-		return 0.0, fmt.Errorf("get volume error at set name %s and ts %d :: error:: %s",
-			setName, ts, err.Error())
-	}
-
-	// throw no error here since volume is not mandatory
-	if price == nil && err == nil {
-		return 0.0, nil
-	}
-
-	return volume, nil
+	return nil
 }

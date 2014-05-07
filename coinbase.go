@@ -23,7 +23,7 @@ func (p *CoinbaseProvider) Init(config *yamlconfig.Config, store *store.Store) e
 	applog.Infof("initialize coinbase provider")
 
 	p.coinbaseClient = &coinbase.Client{
-		APIKey:	config.GetString("provider:coinbase:apikey"),
+		APIKey: config.GetString("provider:coinbase:apikey"),
 	}
 
 	p.config = config
@@ -56,8 +56,9 @@ func (p *CoinbaseProvider) CollectData() error {
 				return err
 			}
 
-			setName := fmt.Sprintf("/mkt/%s/q/%s/p", p.pathId, marketid)
-			if _, err = p.store.SortedSetSet(setName, float64(ts), pr); err != nil {
+			setName := fmt.Sprintf("/mkt/%s/q/%s", p.pathId, marketid)
+			data := map[string]interface{}{"bid": pr, "t": ts}
+			if _, err = p.store.SortedSetSet(setName, float64(ts), data); err != nil {
 				return err
 			}
 		}

@@ -15,13 +15,6 @@ type CryptsyProvider struct {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-// FormatPriceKey
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (p *CryptsyProvider) FormatVolumeKey(symbolId int) string {
-	return fmt.Sprintf("%s/v", p.FormatSymbolIdPath(symbolId))
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Init
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (p *CryptsyProvider) Init(config *yamlconfig.Config, store *store.Store) error {
@@ -61,18 +54,13 @@ func (p *CryptsyProvider) CollectData() error {
 				return err
 			}
 
-			if _, err = p.store.SortedSetSet(
-				fmt.Sprintf("%s/v", setName), float64(ts), vol); err != nil {
-				return err
-			}
-
 			pr, err := strconv.ParseFloat(sd.Get("lasttradeprice").Str(), 64)
 			if err != nil {
 				return err
 			}
 
-			if _, err = p.store.SortedSetSet(
-				fmt.Sprintf("%s/p", setName), float64(ts), pr); err != nil {
+			data := map[string]interface{}{"bid": pr, "vol": vol, "t": ts}
+			if _, err = p.store.SortedSetSet(setName, float64(ts), data); err != nil {
 				return err
 			}
 		}
