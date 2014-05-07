@@ -42,6 +42,13 @@ func (p *ProviderBase) FormatBarKey(snap int, barTs int) string {
 	return fmt.Sprintf("%s/%d", snap, barTs)
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// FormatQuotesPath
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+func (p *ProviderBase) FormatQuotesPath() string {
+	return fmt.Sprintf("/mkt/%s/q", p.pathId)
+}
+
 type EnumQuotesFunc func(quote Quote)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -54,34 +61,38 @@ func (p *ProviderBase) EnumerateQuotes(enumQuotesFunc EnumQuotesFunc) error {
 		symbolId int
 	)
 
-	match := fmt.Sprintf("/mkt/%s/q", p.pathId)
-	p.store.EnumerateKeys(match, func(idx int, key string) error {
+	p.store.EnumerateKeys(p.FormatQuotesPath(), func(idx int, key string) error {
 
-		c, err := fmt.Sscanf(key, "/mkt/%s/q/%d", &pathId, &symbolId)
-		if err != nil || c != 2 {
+		if c, err := fmt.Sscanf(key, "/mkt/%s/q/%d", &pathId, &symbolId); err != nil || c != 2 {
 			return fmt.Errorf("error while parsing key %s:: %s", key, err.Error())
 		}
 
 		res, err := p.store.SortedSetGetAll(key)
-		if err != nil{
+		if err != nil {
 			return err
 		}
-		
-		if res != nil && len(res) > 0{
-			for _, data = range res{
-				quote =: Quote{symbolId: symbolId}				
-				quote.volume = data["vol"]
-				
-				if quote.timeStamp, ok := data["ts"]; !ok{
+
+		if res != nil && len(res) > 0 {
+			for _, d := range res {
+				data := d.(QuoteStoreData)
+
+				quote := Quote{symbolId: symbolId}
+				quote.volume = data["vol"].(float64)
+
+				if ts, ok := data["ts"]; ok {
+					quote.timeStamp = ts.(int)
+				} else {
 					return fmt.Errorf("parsing quotedata of key %s. No timestamp info available.", key)
 				}
-				
-				if quote.price, ok := data["bid"]; !ok{
+
+				if price, ok := data["bid"]; ok {
+					quote.price = price.(float64)
+				} else {
 					return fmt.Errorf("parsing quotedata of key %s. No price info available.", key)
-				}				
+				}
 			}
 		}
-		
+
 		return nil
 	})
 
@@ -93,8 +104,7 @@ func (p *ProviderBase) EnumerateQuotes(enumQuotesFunc EnumQuotesFunc) error {
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 func (p *ProviderBase) RemoveQuotes() error {
 
-	match := fmt.Sprintf("/mkt/%s/q", p.pathId)
-	p.store.EnumerateKeys(match, func(idx int, key string) error {
+	p.store.EnumerateKeys(p.FormatQuotesPath(), func(idx int, key string) error {
 		if _, err := p.store.SortedSetDeleteAll(key); err != nil {
 			return fmt.Errorf("unable to remove price info from %s:: error:: %s",
 				key, err.Error())

@@ -57,7 +57,7 @@ func (p *CoinbaseProvider) CollectData() error {
 			}
 
 			setName := fmt.Sprintf("/mkt/%s/q/%s", p.pathId, marketid)
-			data := map[string]interface{}{"bid": pr, "t": ts}
+			data := QuoteStoreData{"bid": pr, "t": ts}
 			if _, err = p.store.SortedSetSet(setName, float64(ts), data); err != nil {
 				return err
 			}

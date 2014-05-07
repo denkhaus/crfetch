@@ -59,7 +59,7 @@ func (p *CryptsyProvider) CollectData() error {
 				return err
 			}
 
-			data := map[string]interface{}{"bid": pr, "vol": vol, "t": ts}
+			data := QuoteStoreData{"bid": pr, "vol": vol, "t": ts}
 			if _, err = p.store.SortedSetSet(setName, float64(ts), data); err != nil {
 				return err
 			}

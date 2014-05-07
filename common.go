@@ -10,6 +10,8 @@ import (
 	"net/http"
 )
 
+type QuoteStoreData map[string]interface{}
+
 type Provider interface {
 	Init(config *yamlconfig.Config, store *store.Store) error
 	CollectData() error

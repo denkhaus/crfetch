@@ -3,10 +3,10 @@ package main
 import (
 	"bitbucket.org/mendsley/tcgl/applog"
 	"fmt"
+	"github.com/denkhaus/go-signal"
 	"github.com/denkhaus/go-store"
 	"github.com/denkhaus/yamlconfig"
 	"os"
-	"os/signal"
 	"time"
 )
 
@@ -16,6 +16,7 @@ type Application struct {
 	store      *store.Store
 	normalizer *Normalizer
 	config     *yamlconfig.Config
+	sigHandler *gosignal.SignalHandler
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -26,46 +27,26 @@ func (app *Application) Stop() {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-// Register interrupt handlers so we can stop the ethereum
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (app *Application) RegisterInterupts() {
-	// Buffered chan of one is enough
-	c := make(chan os.Signal, 1)
-
-	// Notify about interrupts for now
-	signal.Notify(c, os.Interrupt)
-
-	go func() {
-		for sig := range c {
-			applog.Infof("application shutdown requested by %v\n", sig)
-			app.Stop()
-		}
-	}()
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// LoadDefaults
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (app *Application) LoadDefaults(config *yamlconfig.Config) {
-	config.SetDefault("snapsteps", []int{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800})
-	config.SetDefault("fetchactionwaitminutes", 2*time.Minute)
-	config.SetDefault("normalizeactionat", 5)
-	config.SetDefault("erasesourcequoteswaitminutes", 15)
-	config.SetDefault("store:instances", 10)
-	config.SetDefault("store:network", "tcp")
-	config.SetDefault("store:address", ":6379")
-	config.SetDefault("store:password", "")
-	config.SetDefault("provider:coinbase:apikey", "")
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
 // Init Application
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (app *Application) Init() []error {
 
 	errors := make([]error, 0)
 	config := yamlconfig.NewConfig("crfetchrc.yaml")
-	if err := config.Load(app.LoadDefaults, "", false); err != nil {
+
+	if err := config.Load(func(config *yamlconfig.Config) {
+
+		config.SetDefault("snapsteps", []int{60, 300, 600, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200, 604800})
+		config.SetDefault("fetchactionwaitminutes", 2*time.Minute)
+		config.SetDefault("normalizeactionat", 5)
+		config.SetDefault("erasesourcequoteswaitminutes", 15)
+		config.SetDefault("store:instances", 10)
+		config.SetDefault("store:network", "tcp")
+		config.SetDefault("store:address", ":6379")
+		config.SetDefault("store:password", "")
+		config.SetDefault("provider:coinbase:apikey", "")
+
+	}, "", false); err != nil {
 		return append(errors, fmt.Errorf("load config error:: %s", err.Error()))
 	}
 
@@ -75,13 +56,11 @@ func (app *Application) Init() []error {
 	waitMinutes := config.GetDuration("fetchactionwaitminutes")
 	app.ticker = time.NewTicker(waitMinutes)
 
-	poolInstances := config.GetInt("store:instances")
-	poolNetwork := config.GetString("store:network")
-	poolAddress := config.GetString("store:address")
-	poolPassword := config.GetString("store:password")
-
-	if st, err := store.NewStore(poolInstances, poolNetwork,
-		poolAddress, poolPassword); err != nil {
+	if st, err := store.NewStore(
+		config.GetInt("store:instances"),
+		config.GetString("store:network"),
+		config.GetString("store:address"),
+		config.GetString("store:address")); err != nil {
 		return append(errors, err)
 	} else {
 		app.store = st
@@ -91,7 +70,12 @@ func (app *Application) Init() []error {
 	app.normalizer = NewNormalizer(app.store, snapSteps)
 
 	errors = append(errors, app.InitProviders()...)
-	app.RegisterInterupts()
+
+	app.sigHandler = gosignal.NewSignalHandler()
+	app.sigHandler.AddHandler(func(sig os.Signal) {
+		applog.Infof("application shutdown requested by %v\n", sig)
+		app.Stop()
+	})
 
 	return errors
 }

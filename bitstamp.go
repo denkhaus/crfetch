@@ -38,7 +38,7 @@ func (p *BitstampProvider) CollectData() (err error) {
 	}
 
 	setName := fmt.Sprintf("/mkt/%s/q/%s", p.pathId, BITSTAMP_MKT_ID_BTCUSD)
-	data := map[string]interface{}{"bid": ticker.Bid, "ask": ticker.Ask, "last": ticker.Last, "t": ts}
+	data := QuoteStoreData{"bid": ticker.Bid, "ask": ticker.Ask, "last": ticker.Last, "t": ts}
 	if _, err = p.store.SortedSetSet(setName, float64(ts), data); err != nil {
 		return
 	}
