@@ -7,6 +7,7 @@ import (
 	"github.com/denkhaus/go-store"
 	"github.com/denkhaus/yamlconfig"
 	"os"
+	"runtime"
 	"time"
 )
 
@@ -16,7 +17,6 @@ type Application struct {
 	store      *store.Store
 	normalizer *Normalizer
 	config     *yamlconfig.Config
-	sigHandler *gosignal.SignalHandler
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -71,8 +71,7 @@ func (app *Application) Init() []error {
 
 	errors = append(errors, app.InitProviders()...)
 
-	app.sigHandler = gosignal.NewSignalHandler()
-	app.sigHandler.AddHandler(func(sig os.Signal) {
+	gosignal.ObserveInterrupt().Then(func(sig os.Signal) {
 		applog.Infof("application shutdown requested by %v\n", sig)
 		app.Stop()
 	})
@@ -117,6 +116,7 @@ func (app *Application) Run() {
 func main() {
 
 	app := &Application{}
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	LogSection("startup application")
 	if errors := app.Init(); len(errors) > 0 {
 		ReportErrors("init error", errors)
